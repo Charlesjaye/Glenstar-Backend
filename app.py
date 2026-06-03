@@ -542,7 +542,7 @@ def call_claude(system_prompt, user_prompt, max_tokens=1500):
         "content-type": "application/json"
     }
     body = {
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-3-5-sonnet-20241022",
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": user_prompt}]
     }
@@ -1012,7 +1012,7 @@ RESPONSE RULES:
             "content-type": "application/json"
         }
         body = {
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-3-5-sonnet-20241022",
             "max_tokens": 1500,
             "system": system,
             "messages": msgs

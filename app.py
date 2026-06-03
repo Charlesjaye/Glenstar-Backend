@@ -2,7 +2,6 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from apscheduler.schedulers.background import BackgroundScheduler
-import anthropic
 import requests
 from bs4 import BeautifulSoup
 import os, json, re
@@ -535,11 +534,35 @@ def scrape_report(url):
         return {"success": False, "text": ""}
 
 
+def call_claude(system_prompt, user_prompt, max_tokens=1500):
+    """Call Claude API directly via HTTP — works with any anthropic library version."""
+    headers = {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    body = {
+        "model": "claude-sonnet-4-20250514",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": user_prompt}]
+    }
+    if system_prompt:
+        body["system"] = system_prompt
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers=headers,
+        json=body,
+        timeout=60
+    )
+    resp.raise_for_status()
+    return resp.json()["content"][0]["text"]
+
+
 def extract_metrics(market, text):
     if not ANTHROPIC_API_KEY or not text:
         return {}
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         prompt = f"""Extract INDUSTRIAL ONLY real estate metrics for {market} from this broker report.
 Ignore all office, retail, multifamily data. Return ONLY valid JSON, no markdown:
 {{
@@ -558,11 +581,8 @@ Ignore all office, retail, multifamily data. Return ONLY valid JSON, no markdown
 }}
 Only return values you can confirm directly from the text. Use null for anything uncertain.
 Text: {text[:4000]}"""
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514", max_tokens=600,
-            messages=[{"role":"user","content":prompt}]
-        )
-        raw = re.sub(r'```json|```','', msg.content[0].text.strip())
+        raw = call_claude(None, prompt, max_tokens=600)
+        raw = re.sub(r'```json|```','', raw.strip())
         return json.loads(raw)
     except Exception as e:
         logger.error(f"Extraction failed {market}: {e}")
@@ -586,25 +606,22 @@ def generate_thesis():
         _build_fallback_thesis(seen, latest_q, report_count)
         return
 
-    try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    mkt_lines = []
+    for r in sorted(seen.values(), key=lambda x: x.market):
+        parts = [f"{r.market} ({r.source} {r.quarter})"]
+        if r.vacancy_rate is not None:           parts.append(f"Vac:{r.vacancy_rate}%")
+        if r.ytd_absorption_msf is not None:     parts.append(f"Abs:{r.ytd_absorption_msf}MSF")
+        if r.asking_rent_psf is not None:        parts.append(f"Rent:${r.asking_rent_psf}/SF")
+        if r.rent_growth_pct is not None:        parts.append(f"RentGrowth:{r.rent_growth_pct}%")
+        if r.cap_rate is not None:               parts.append(f"Cap:{r.cap_rate}%")
+        if r.construction_cost_psf is not None:  parts.append(f"Cost:${r.construction_cost_psf}/SF")
+        if r.pipeline_msf is not None:           parts.append(f"Pipeline:{r.pipeline_msf}MSF")
+        if r.vac_0_100k is not None:             parts.append(f"SmBayVac:{r.vac_0_100k}%")
+        if r.cost_0_100k is not None:            parts.append(f"SmBayCost:${r.cost_0_100k}/SF")
+        if r.cost_750k_plus is not None:         parts.append(f"BigBoxCost:${r.cost_750k_plus}/SF")
+        mkt_lines.append(" | ".join(parts))
 
-        mkt_lines = []
-        for r in sorted(seen.values(), key=lambda x: x.market):
-            parts = [f"{r.market} ({r.source} {r.quarter})"]
-            if r.vacancy_rate is not None:           parts.append(f"Vac:{r.vacancy_rate}%")
-            if r.ytd_absorption_msf is not None:     parts.append(f"Abs:{r.ytd_absorption_msf}MSF")
-            if r.asking_rent_psf is not None:        parts.append(f"Rent:${r.asking_rent_psf}/SF")
-            if r.rent_growth_pct is not None:        parts.append(f"RentGrowth:{r.rent_growth_pct}%")
-            if r.cap_rate is not None:               parts.append(f"Cap:{r.cap_rate}%")
-            if r.construction_cost_psf is not None:  parts.append(f"Cost:${r.construction_cost_psf}/SF")
-            if r.pipeline_msf is not None:           parts.append(f"Pipeline:{r.pipeline_msf}MSF")
-            if r.vac_0_100k is not None:             parts.append(f"SmBayVac:{r.vac_0_100k}%")
-            if r.cost_0_100k is not None:            parts.append(f"SmBayCost:${r.cost_0_100k}/SF")
-            if r.cost_750k_plus is not None:         parts.append(f"BigBoxCost:${r.cost_750k_plus}/SF")
-            mkt_lines.append(" | ".join(parts))
-
-        prompt = f"""You are a senior industrial real estate investment analyst for Glenstar Properties.
+    prompt = f"""You are a senior industrial real estate investment analyst for Glenstar Properties.
 Based on {report_count} verified industrial broker reports ({latest_q}) from JLL, CBRE, C&W, Avison Young, Newmark, Colliers:
 
 {chr(10).join(mkt_lines)}
@@ -628,11 +645,10 @@ Generate a comprehensive investment thesis. Return ONLY valid JSON:
   "risk_factors": [{{"level":"high|medium|low","title":"<name>","detail":"<explanation>"}}]
 }}"""
 
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514", max_tokens=8000,
-            messages=[{"role":"user","content":prompt}]
-        )
-        raw = re.sub(r'```json|```','', msg.content[0].text.strip())
+    try:
+        data_str = json.dumps({"rankings": [], "risk_factors": [], "summary": ""})
+        raw = call_claude(None, prompt, max_tokens=8000)
+        raw = re.sub(r'```json|```', '', raw.strip())
         data = json.loads(raw)
 
         Thesis.query.update({"is_current": False})
@@ -987,25 +1003,39 @@ RESPONSE RULES:
 - Industrial real estate only — do not discuss office, retail, or multifamily"""
 
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         msgs = [{"role":h["role"],"content":h["content"]} for h in history[-10:] if h.get("role") in ["user","assistant"]]
         msgs.append({"role":"user","content":user_msg})
 
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=system,
-            messages=msgs
+        headers = {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        body = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1500,
+            "system": system,
+            "messages": msgs
+        }
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=body,
+            timeout=60
         )
-        return jsonify({"reply": msg.content[0].text})
+        if resp.status_code == 401:
+            return jsonify({"reply":"Authentication failed — your API key is invalid. Check ANTHROPIC_API_KEY in Render environment variables."})
+        if resp.status_code == 429:
+            return jsonify({"reply":"Rate limit reached — please wait a moment and try again."})
+        resp.raise_for_status()
+        reply = resp.json()["content"][0]["text"]
+        return jsonify({"reply": reply})
 
-    except anthropic.AuthenticationError:
-        return jsonify({"reply":"Authentication failed — your API key is invalid or expired. Please check your ANTHROPIC_API_KEY in Render environment variables."})
-    except anthropic.RateLimitError:
-        return jsonify({"reply":"Rate limit reached — please wait a moment and try again."})
+    except requests.exceptions.Timeout:
+        return jsonify({"reply":"Request timed out — the server took too long to respond. Please try again."})
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        return jsonify({"reply":f"An error occurred. Please try again. If the issue persists, check your Render logs."})
+        return jsonify({"reply":f"An error occurred: {str(e)[:200]}. Please try again."})
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────

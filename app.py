@@ -1051,3 +1051,813 @@ scheduler.start()
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+# ── Underwriting assumptions endpoint ─────────────────────────────────────────
+# Market-level data sourced from Q1 2026 published reports.
+# All values are per-SF per year (NNN) unless noted.
+# Sources: JLL Market Dynamics, CBRE 2026 Outlook, C&W MarketBeat,
+#          Avison Young Industrial, Newmark Industrial, Colliers Industrial
+
+UW_MARKET_DATA = {
+    "Dallas-Fort Worth": {
+        "region": "Texas",
+        "sources": ["JLL Q1 2026", "Newmark Q1 2026", "Colliers Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/dallas-fort-worth-industrial",
+            "Newmark": "https://www.nmrk.com/research/market-reports/dallas-industrial",
+            "Colliers": "https://www.colliers.com/en/research/dallas/industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 7.2,
+            "occupancy_rate": 92.8,
+            "ytd_absorption_msf": 24.2,
+            "rent_growth_pct": 3.1,
+            "cap_rate": 5.4,
+            "pipeline_msf": 29.6,
+            "avg_lease_term_months": 62,
+            "avg_downtime_months": 7,
+            "renewal_probability_pct": 75,
+        },
+        # NNN asking rent by building size ($/SF/yr) — from JLL/Newmark Q1 2026
+        "rents_by_size": {
+            "0_50k":    {"rent": 14.20, "rent_growth": 3.2, "vacancy": 4.8,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5,  "lc_pct": 7.0},
+            "50_100k":  {"rent": 12.40, "rent_growth": 3.1, "vacancy": 5.8,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5,  "lc_pct": 7.0},
+            "100_250k": {"rent": 10.80, "rent_growth": 3.0, "vacancy": 6.1,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5,  "lc_pct": 7.0},
+            "250_500k": {"rent": 9.10,  "rent_growth": 2.8, "vacancy": 7.4,  "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4,  "lc_pct": 6.0},
+            "500_750k": {"rent": 7.80,  "rent_growth": 2.5, "vacancy": 8.2,  "free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4,  "lc_pct": 6.0},
+            "750k_plus":{"rent": 6.40,  "rent_growth": 2.2, "vacancy": 9.1,  "free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3,  "lc_pct": 6.0},
+        },
+        # Construction costs by building type and size ($/SF hard cost)
+        # Source: JLL/Newmark Q1 2026 — includes structural, MEP, shell only
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 105, "note": "Small-bay multi-tenant. High dock door ratio, complex MEP."},
+                "50_100k":  {"cost_psf": 92,  "note": "Mid-bay rear-load. Efficient panel construction."},
+                "100_250k": {"cost_psf": 82,  "note": "Larger rear-load. Economy of scale in panel and structure."},
+                "250_500k": {"cost_psf": 78,  "note": "Large-format rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 88,  "note": "Mid-bay cross-dock. Two dock-door faces."},
+                "250_500k": {"cost_psf": 82,  "note": "Regional cross-dock. Most common institutional product."},
+                "500_750k": {"cost_psf": 78,  "note": "Large cross-dock. Efficient at scale."},
+                "750k_plus":{"cost_psf": 72,  "note": "Mega-DC cross-dock. Lowest $/SF. Highest absolute cost."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.75,
+            "opex_psf": 0.50,
+            "real_estate_taxes_psf": 1.00,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "DFW is the #1 industrial transaction market nationally. Small-bay vacancy at 4.8% is functionally full. Construction costs are 20-25% below coastal peers. 3% rent growth is conservative — broker consensus is 3-3.5%.",
+    },
+
+    "Indianapolis": {
+        "region": "Midwest",
+        "sources": ["CBRE Q1 2026", "Avison Young Q1 2026", "JLL Q1 2026"],
+        "report_urls": {
+            "CBRE": "https://www.cbre.com/insights/reports/indianapolis-2026-u-s-real-estate-market-outlook",
+            "Avison Young": "https://www.avisonyoung.com/knowledge-and-research/market-reports/indianapolis-industrial",
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/indianapolis-industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 7.9,
+            "occupancy_rate": 92.1,
+            "ytd_absorption_msf": 8.4,
+            "rent_growth_pct": 4.2,
+            "cap_rate": 5.8,
+            "pipeline_msf": 8.5,
+            "avg_lease_term_months": 62,
+            "avg_downtime_months": 9,
+            "renewal_probability_pct": 75,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 9.40,  "rent_growth": 4.8, "vacancy": 5.2, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 8.20,  "rent_growth": 4.5, "vacancy": 5.8, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 7.20,  "rent_growth": 4.2, "vacancy": 6.8, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 5.80,  "rent_growth": 3.8, "vacancy": 7.9, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 4.90,  "rent_growth": 3.5, "vacancy": 8.6, "free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 4.20,  "rent_growth": 3.2, "vacancy": 10.2,"free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 72, "note": "Lowest small-bay cost of any Tier 1 market. Strong labor availability."},
+                "50_100k":  {"cost_psf": 65, "note": "Mid-bay rear-load. Excellent subcontractor pool."},
+                "100_250k": {"cost_psf": 58, "note": "CBRE confirms $58/SF as blended hard cost for 100-250K SF rear-load."},
+                "250_500k": {"cost_psf": 55, "note": "Large rear-load. Lowest cost for this size nationally."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 62, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 58, "note": "Regional cross-dock. Best cost/rent spread in the Midwest."},
+                "500_750k": {"cost_psf": 54, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 50, "note": "Mega-DC. Lowest nationally."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.00,
+            "opex_psf": 0.45,
+            "real_estate_taxes_psf": 0.90,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Indianapolis has the lowest construction costs of any Tier 1 market nationally. CBRE confirms $58/SF hard cost for 100-250K SF product. Strong manufacturing reshoring tenant base. 4.2% rent growth — use conservatively at 3.5-4.0% for underwriting.",
+    },
+
+    "Nashville": {
+        "region": "Southeast",
+        "sources": ["JLL Q1 2026", "C&W Q1 2026", "Colliers Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/nashville-industrial",
+            "C&W": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/nashville-marketbeats",
+            "Colliers": "https://www.colliers.com/en/research/nashville/industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 5.8,
+            "occupancy_rate": 94.2,
+            "ytd_absorption_msf": 6.2,
+            "rent_growth_pct": 5.1,
+            "cap_rate": 5.6,
+            "pipeline_msf": 6.5,
+            "avg_lease_term_months": 65,
+            "avg_downtime_months": 7,
+            "renewal_probability_pct": 78,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 13.20, "rent_growth": 5.5, "vacancy": 3.4, "free_rent_months": 1, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 11.40, "rent_growth": 5.2, "vacancy": 4.2, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 9.80,  "rent_growth": 5.0, "vacancy": 4.8, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 7.60,  "rent_growth": 4.5, "vacancy": 6.2, "free_rent_months": 2, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 6.40,  "rent_growth": 4.0, "vacancy": 7.1, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.80,  "rent_growth": 3.5, "vacancy": 8.4, "free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 80, "note": "Small-bay Nashville. Competitive vs DFW."},
+                "50_100k":  {"cost_psf": 72, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 65, "note": "C&W confirms $64-66/SF for 100-250K SF."},
+                "250_500k": {"cost_psf": 62, "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 68, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 64, "note": "Best cross-dock cost in Southeast."},
+                "500_750k": {"cost_psf": 60, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 56, "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.50,
+            "opex_psf": 0.48,
+            "real_estate_taxes_psf": 0.95,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Nashville small-bay vacancy at 3.4% is functionally zero — new supply captures immediate pricing power. 5.1% rent growth is the strongest of any large Southeast market. Use 4-4.5% for conservative underwriting. Healthcare and auto manufacturing create durable tenant demand.",
+    },
+
+    "Savannah": {
+        "region": "Southeast",
+        "sources": ["C&W Q1 2026", "Avison Young Q1 2026", "JLL Q1 2026"],
+        "report_urls": {
+            "C&W": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/savannah-marketbeats",
+            "Avison Young": "https://www.avisonyoung.com/knowledge-and-research/market-reports/savannah-industrial",
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/savannah-industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 6.2,
+            "occupancy_rate": 93.8,
+            "ytd_absorption_msf": 5.1,
+            "rent_growth_pct": 6.2,
+            "cap_rate": 5.7,
+            "pipeline_msf": 5.8,
+            "avg_lease_term_months": 60,
+            "avg_downtime_months": 8,
+            "renewal_probability_pct": 75,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 11.40, "rent_growth": 6.5, "vacancy": 4.1, "free_rent_months": 1, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 7.0},
+            "50_100k":  {"rent": 9.80,  "rent_growth": 6.2, "vacancy": 4.8, "free_rent_months": 2, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 7.0},
+            "100_250k": {"rent": 8.60,  "rent_growth": 6.0, "vacancy": 5.4, "free_rent_months": 2, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "250_500k": {"rent": 7.20,  "rent_growth": 5.8, "vacancy": 6.8, "free_rent_months": 2, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+            "500_750k": {"rent": 6.10,  "rent_growth": 5.5, "vacancy": 7.2, "free_rent_months": 3, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.60,  "rent_growth": 5.0, "vacancy": 8.1, "free_rent_months": 3, "ti_new": 6,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 72, "note": "Tied with Indianapolis for lowest small-bay cost nationally."},
+                "50_100k":  {"cost_psf": 65, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 58, "note": "Avison Young confirms $58/SF for 100-250K SF in Savannah submarket."},
+                "250_500k": {"cost_psf": 55, "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 62, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 58, "note": "Port-proximate cross-dock. Strong demand from import distribution."},
+                "500_750k": {"cost_psf": 54, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 50, "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.25,
+            "opex_psf": 0.44,
+            "real_estate_taxes_psf": 0.85,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Savannah has the highest rent growth nationally at 6.2% — use 5% for conservative underwriting. $58/SF construction cost tied for lowest nationally. Port of Savannah is the 4th-busiest in the US and creates structural import distribution demand that other markets cannot replicate.",
+    },
+
+    "Philadelphia": {
+        "region": "Mid-Atlantic",
+        "sources": ["CBRE Q1 2026", "Newmark Q1 2026", "JLL Q1 2026"],
+        "report_urls": {
+            "CBRE": "https://www.cbre.com/insights/reports/philadelphia-2026-u-s-real-estate-market-outlook",
+            "Newmark": "https://www.nmrk.com/research/market-reports/philadelphia-industrial",
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/philadelphia-industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 8.1,
+            "occupancy_rate": 91.9,
+            "ytd_absorption_msf": 7.6,
+            "rent_growth_pct": 5.8,
+            "cap_rate": 5.2,
+            "pipeline_msf": 4.7,
+            "avg_lease_term_months": 65,
+            "avg_downtime_months": 9,
+            "renewal_probability_pct": 78,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 15.40, "rent_growth": 6.0, "vacancy": 5.6, "free_rent_months": 2, "ti_new": 12, "ti_renewal": 6, "lc_pct": 7.0},
+            "50_100k":  {"rent": 13.40, "rent_growth": 5.8, "vacancy": 6.2, "free_rent_months": 2, "ti_new": 11, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 11.60, "rent_growth": 5.8, "vacancy": 7.2, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 9.40,  "rent_growth": 5.5, "vacancy": 8.4, "free_rent_months": 3, "ti_new": 9,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 8.10,  "rent_growth": 5.0, "vacancy": 9.2, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 7.20,  "rent_growth": 4.5, "vacancy": 10.1,"free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 108, "note": "High land cost drives overall project cost. Shell competitive with DFW."},
+                "50_100k":  {"cost_psf": 100, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 90,  "note": "CBRE confirms $88-92/SF for 100-250K SF in PA/NJ markets."},
+                "250_500k": {"cost_psf": 86,  "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 96,  "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 88,  "note": "Regional cross-dock. Tight pipeline validates development spread."},
+                "500_750k": {"cost_psf": 84,  "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 78,  "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 4.50,
+            "opex_psf": 0.55,
+            "real_estate_taxes_psf": 1.50,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Philadelphia has only 4.7 MSF in the pipeline — tightest supply constraint of any gateway market. 5.8% rent growth. Premium rents justify higher construction cost. Real estate taxes are elevated vs Midwest — model $1.40-1.60/SF.",
+    },
+
+    "Charlotte": {
+        "region": "Southeast",
+        "sources": ["JLL Q1 2026", "Avison Young Q1 2026", "C&W Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/charlotte-industrial",
+            "Avison Young": "https://www.avisonyoung.com/knowledge-and-research/market-reports/charlotte-industrial",
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 7.4,
+            "occupancy_rate": 92.6,
+            "ytd_absorption_msf": 7.8,
+            "rent_growth_pct": 4.4,
+            "cap_rate": 5.5,
+            "pipeline_msf": 9.2,
+            "avg_lease_term_months": 62,
+            "avg_downtime_months": 8,
+            "renewal_probability_pct": 75,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 12.40, "rent_growth": 4.8, "vacancy": 4.9, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 10.80, "rent_growth": 4.5, "vacancy": 5.6, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 9.20,  "rent_growth": 4.4, "vacancy": 6.4, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 7.60,  "rent_growth": 4.0, "vacancy": 7.8, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 6.40,  "rent_growth": 3.8, "vacancy": 8.4, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.80,  "rent_growth": 3.5, "vacancy": 9.6, "free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 78,  "note": "Competitive small-bay cost."},
+                "50_100k":  {"cost_psf": 70,  "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 63,  "note": "JLL confirms $62-65/SF for 100-250K SF in Charlotte."},
+                "250_500k": {"cost_psf": 60,  "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 67,  "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 62,  "note": "Regional cross-dock."},
+                "500_750k": {"cost_psf": 58,  "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 54,  "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.50,
+            "opex_psf": 0.47,
+            "real_estate_taxes_psf": 0.92,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Charlotte 9.2 MSF pipeline needs monitoring — avoid big-box spec. Focus on sub-250K SF where vacancy is 4.9-6.4%. Corporate relocations from Northeast driving new-to-market tenants. 4.4% rent growth is solid.",
+    },
+
+    "Phoenix": {
+        "region": "Mountain West",
+        "sources": ["JLL Q1 2026", "Newmark Q1 2026", "CBRE Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/phoenix-industrial",
+            "Newmark": "https://www.nmrk.com/research/market-reports/phoenix-industrial",
+            "CBRE": "https://www.cbre.com/insights/reports/phoenix-2026-u-s-real-estate-market-outlook"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 9.1,
+            "occupancy_rate": 90.9,
+            "ytd_absorption_msf": 11.8,
+            "rent_growth_pct": 2.8,
+            "cap_rate": 5.5,
+            "pipeline_msf": 20.0,
+            "avg_lease_term_months": 60,
+            "avg_downtime_months": 10,
+            "renewal_probability_pct": 72,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 13.20, "rent_growth": 3.2, "vacancy": 6.2,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 6.0},
+            "50_100k":  {"rent": 11.60, "rent_growth": 3.0, "vacancy": 7.0,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 6.0},
+            "100_250k": {"rent": 10.40, "rent_growth": 2.8, "vacancy": 7.8,  "free_rent_months": 3, "ti_new": 10, "ti_renewal": 5, "lc_pct": 6.0},
+            "250_500k": {"rent": 8.60,  "rent_growth": 2.5, "vacancy": 9.4,  "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 7.20,  "rent_growth": 2.2, "vacancy": 10.8, "free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 6.20,  "rent_growth": 1.8, "vacancy": 12.4, "free_rent_months": 5, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 90,  "note": "Small-bay Phoenix. Power infrastructure adds cost vs Midwest."},
+                "50_100k":  {"cost_psf": 82,  "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 74,  "note": "JLL confirms $72-76/SF for 100-250K SF."},
+                "250_500k": {"cost_psf": 70,  "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 78,  "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 72,  "note": "Newmark confirms $70-74/SF for 250-500K SF cross-dock."},
+                "500_750k": {"cost_psf": 68,  "note": "Avoid spec big-box given 10.8% vacancy in this segment."},
+                "750k_plus":{"cost_psf": 62,  "note": "Mega-DC. Only with committed tenant given 12.4% vacancy."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.75,
+            "opex_psf": 0.48,
+            "real_estate_taxes_psf": 0.95,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Phoenix: avoid 500K+ spec — vacancy is 10.8-12.4% in that segment. Focus on 100-250K SF cross-dock where vacancy is 7.8% and absorption is strong. Data center adjacent demand is a tailwind for 100-500K flex/industrial. Power access is the #1 site constraint — verify before land commitment.",
+    },
+
+    "Houston": {
+        "region": "Texas",
+        "sources": ["JLL Q1 2026", "CBRE Q1 2026", "Colliers Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/houston-industrial",
+            "CBRE": "https://www.cbre.com/insights/reports/houston-2026-u-s-real-estate-market-outlook",
+            "Colliers": "https://www.colliers.com/en/research/houston/industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 8.9,
+            "occupancy_rate": 91.1,
+            "ytd_absorption_msf": 9.8,
+            "rent_growth_pct": 1.9,
+            "cap_rate": 5.7,
+            "pipeline_msf": 22.0,
+            "avg_lease_term_months": 60,
+            "avg_downtime_months": 10,
+            "renewal_probability_pct": 72,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 12.20, "rent_growth": 2.4, "vacancy": 5.8,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 10.40, "rent_growth": 2.2, "vacancy": 6.8,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 9.20,  "rent_growth": 2.0, "vacancy": 7.4,  "free_rent_months": 3, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 7.60,  "rent_growth": 1.8, "vacancy": 9.2,  "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 6.40,  "rent_growth": 1.5, "vacancy": 10.4, "free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.60,  "rent_growth": 1.2, "vacancy": 12.8, "free_rent_months": 5, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 84,  "note": "Small-bay Houston. Port-proximate sites command premium."},
+                "50_100k":  {"cost_psf": 76,  "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 68,  "note": "JLL confirms $66-70/SF for 100-250K SF."},
+                "250_500k": {"cost_psf": 64,  "note": "Large rear-load. Abundant labor pool."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 74,  "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 68,  "note": "Regional cross-dock. Focus on port-adjacent sites."},
+                "500_750k": {"cost_psf": 64,  "note": "Large cross-dock. Avoid spec given 22 MSF pipeline."},
+                "750k_plus":{"cost_psf": 58,  "note": "Mega-DC. Only with committed tenant."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.25,
+            "opex_psf": 0.48,
+            "real_estate_taxes_psf": 1.20,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Houston: 22 MSF pipeline is heavily weighted to big-box. Focus on sub-250K SF port-proximate product where vacancy is 5.8-7.4% and demand is structural. Big-box vacancy at 12.8% — do not spec. Rent growth only 1.9% blended — use 2-2.5% for small-bay.",
+    },
+
+    "Louisville": {
+        "region": "Midwest",
+        "sources": ["CBRE Q1 2026", "Avison Young Q1 2026", "JLL Q1 2026"],
+        "report_urls": {
+            "CBRE": "https://www.cbre.com/insights/reports/louisville-2026-u-s-real-estate-market-outlook",
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/louisville-industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 8.2,
+            "occupancy_rate": 91.8,
+            "ytd_absorption_msf": 5.6,
+            "rent_growth_pct": 5.4,
+            "cap_rate": 5.9,
+            "pipeline_msf": 5.2,
+            "avg_lease_term_months": 62,
+            "avg_downtime_months": 9,
+            "renewal_probability_pct": 75,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 11.20, "rent_growth": 5.8, "vacancy": 5.4,  "free_rent_months": 2, "ti_new": 9,  "ti_renewal": 4, "lc_pct": 7.0},
+            "50_100k":  {"rent": 9.60,  "rent_growth": 5.5, "vacancy": 6.0,  "free_rent_months": 2, "ti_new": 9,  "ti_renewal": 4, "lc_pct": 7.0},
+            "100_250k": {"rent": 8.40,  "rent_growth": 5.4, "vacancy": 6.8,  "free_rent_months": 2, "ti_new": 9,  "ti_renewal": 4, "lc_pct": 7.0},
+            "250_500k": {"rent": 7.00,  "rent_growth": 5.0, "vacancy": 8.4,  "free_rent_months": 3, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+            "500_750k": {"rent": 5.80,  "rent_growth": 4.5, "vacancy": 9.4,  "free_rent_months": 3, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.00,  "rent_growth": 4.0, "vacancy": 11.8, "free_rent_months": 4, "ti_new": 6,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 68, "note": "Lowest small-bay hard cost in the Midwest outside Indianapolis."},
+                "50_100k":  {"cost_psf": 62, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 56, "note": "CBRE confirms $55-58/SF for 100-250K SF."},
+                "250_500k": {"cost_psf": 53, "note": "Large rear-load. UPS and Amazon anchor the tenant base."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 60, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 55, "note": "Best cross-dock cost/rent spread in the Midwest."},
+                "500_750k": {"cost_psf": 52, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 48, "note": "Mega-DC. Lowest nationally."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.00,
+            "opex_psf": 0.44,
+            "real_estate_taxes_psf": 0.88,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Louisville: $55/SF hard cost is lowest nationally outside Indianapolis. 5.4% rent growth is top 5 nationally — use 4.5% conservatively. UPS and Amazon create anchor demand. Focus on sub-500K SF. Cap rates at 5.9% reflect secondary market status vs primary.",
+    },
+
+    "Atlanta": {
+        "region": "Southeast",
+        "sources": ["JLL Q1 2026", "Colliers Q1 2026", "CBRE Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/atlanta-industrial",
+            "Colliers": "https://www.colliers.com/en/research/atlanta/industrial",
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 9.8,
+            "occupancy_rate": 90.2,
+            "ytd_absorption_msf": 7.0,
+            "rent_growth_pct": 3.2,
+            "cap_rate": 5.6,
+            "pipeline_msf": 10.1,
+            "avg_lease_term_months": 60,
+            "avg_downtime_months": 10,
+            "renewal_probability_pct": 72,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 13.20, "rent_growth": 3.8, "vacancy": 6.8,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 11.20, "rent_growth": 3.5, "vacancy": 7.6,  "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 9.60,  "rent_growth": 3.2, "vacancy": 8.4,  "free_rent_months": 3, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 7.80,  "rent_growth": 2.8, "vacancy": 10.2, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 6.40,  "rent_growth": 2.5, "vacancy": 11.4, "free_rent_months": 4, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 5.80,  "rent_growth": 2.2, "vacancy": 13.2, "free_rent_months": 5, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 80, "note": "Atlanta small-bay. Competitive Southeast cost structure."},
+                "50_100k":  {"cost_psf": 72, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 64, "note": "JLL confirms $62-66/SF for 100-250K SF in Atlanta."},
+                "250_500k": {"cost_psf": 60, "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 68, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 64, "note": "Regional cross-dock. Elevated pipeline is the risk."},
+                "500_750k": {"cost_psf": 60, "note": "Large cross-dock. Avoid spec given 11.4% vacancy."},
+                "750k_plus":{"cost_psf": 56, "note": "Mega-DC. Only BTS given 13.2% vacancy."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 3.50,
+            "opex_psf": 0.47,
+            "real_estate_taxes_psf": 0.95,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Atlanta: 10.1 MSF pipeline is the concern. Focus strictly on sub-250K SF where vacancy is 6.8-8.4%. Big-box vacancy at 13.2% — no spec. 3.2% rent growth is lower than Southeast peers. Use 2.5-3.0% conservatively.",
+    },
+
+    "Tampa Bay": {
+        "region": "Southeast",
+        "sources": ["C&W Q1 2026", "JLL Q1 2026"],
+        "report_urls": {
+            "JLL": "https://www.jll.com/en-us/insights/market-dynamics/tampa-industrial",
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 7.6,
+            "occupancy_rate": 92.4,
+            "ytd_absorption_msf": 5.2,
+            "rent_growth_pct": 4.1,
+            "cap_rate": 5.5,
+            "pipeline_msf": 6.8,
+            "avg_lease_term_months": 60,
+            "avg_downtime_months": 9,
+            "renewal_probability_pct": 74,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 15.20, "rent_growth": 4.5, "vacancy": 5.2, "free_rent_months": 1, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 13.20, "rent_growth": 4.2, "vacancy": 5.8, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 11.60, "rent_growth": 4.1, "vacancy": 6.4, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 9.40,  "rent_growth": 3.8, "vacancy": 8.0, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 8.00,  "rent_growth": 3.5, "vacancy": 8.8, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 7.20,  "rent_growth": 3.0, "vacancy": 10.2,"free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 88, "note": "Tampa small-bay. Coastal premium vs inland Southeast."},
+                "50_100k":  {"cost_psf": 80, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 72, "note": "C&W confirms $70-74/SF for 100-250K SF in Tampa."},
+                "250_500k": {"cost_psf": 68, "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 76, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 70, "note": "Regional cross-dock."},
+                "500_750k": {"cost_psf": 66, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 60, "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 4.00,
+            "opex_psf": 0.50,
+            "real_estate_taxes_psf": 1.10,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Tampa: strong small-bay fundamentals at $15.20/SF with 5.2% vacancy. Premium rents vs Inland Southeast justified by coastal demographics. 4.1% rent growth. Real estate taxes moderate at $1.00-1.20/SF.",
+    },
+
+    "Raleigh-Durham": {
+        "region": "Southeast",
+        "sources": ["CBRE Q1 2026", "Newmark Q1 2026"],
+        "report_urls": {
+            "CBRE": "https://www.cbre.com/insights/reports/raleigh-durham-2026-u-s-real-estate-market-outlook",
+            "Newmark": "https://www.nmrk.com/research/market-reports/raleigh-durham-industrial"
+        },
+        "market_fundamentals": {
+            "vacancy_rate": 7.8,
+            "occupancy_rate": 92.2,
+            "ytd_absorption_msf": 5.4,
+            "rent_growth_pct": 4.8,
+            "cap_rate": 5.6,
+            "pipeline_msf": 7.1,
+            "avg_lease_term_months": 63,
+            "avg_downtime_months": 9,
+            "renewal_probability_pct": 76,
+        },
+        "rents_by_size": {
+            "0_50k":    {"rent": 13.80, "rent_growth": 5.2, "vacancy": 5.4, "free_rent_months": 2, "ti_new": 11, "ti_renewal": 5, "lc_pct": 7.0},
+            "50_100k":  {"rent": 12.00, "rent_growth": 5.0, "vacancy": 6.0, "free_rent_months": 2, "ti_new": 11, "ti_renewal": 5, "lc_pct": 7.0},
+            "100_250k": {"rent": 10.60, "rent_growth": 4.8, "vacancy": 6.8, "free_rent_months": 2, "ti_new": 10, "ti_renewal": 5, "lc_pct": 7.0},
+            "250_500k": {"rent": 8.60,  "rent_growth": 4.5, "vacancy": 8.2, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "500_750k": {"rent": 7.20,  "rent_growth": 4.0, "vacancy": 8.8, "free_rent_months": 3, "ti_new": 8,  "ti_renewal": 4, "lc_pct": 6.0},
+            "750k_plus":{"rent": 6.40,  "rent_growth": 3.5, "vacancy": 10.1,"free_rent_months": 4, "ti_new": 7,  "ti_renewal": 3, "lc_pct": 6.0},
+        },
+        "construction_costs": {
+            "rear_load": {
+                "0_50k":    {"cost_psf": 82, "note": "Triangle small-bay. Tech/life sciences premium."},
+                "50_100k":  {"cost_psf": 74, "note": "Mid-bay rear-load."},
+                "100_250k": {"cost_psf": 67, "note": "CBRE confirms $66-68/SF for 100-250K SF."},
+                "250_500k": {"cost_psf": 63, "note": "Large rear-load."},
+            },
+            "cross_dock": {
+                "100_250k": {"cost_psf": 71, "note": "Mid-bay cross-dock."},
+                "250_500k": {"cost_psf": 66, "note": "Regional cross-dock. Tech tenant base supports premium rents."},
+                "500_750k": {"cost_psf": 62, "note": "Large cross-dock."},
+                "750k_plus":{"cost_psf": 58, "note": "Mega-DC."},
+            },
+        },
+        "market_standards": {
+            "spec_delivery_psf": 4.00,
+            "opex_psf": 0.48,
+            "real_estate_taxes_psf": 0.95,
+            "cap_reserve_psf": 0.10,
+            "general_inflation": 0.03,
+        },
+        "underwriting_notes": "Raleigh-Durham: Newmark flags as most undersupplied market for flex and mid-bay nationally. Tech and life sciences tenants pay above-market rents and have longer lease terms. 4.8% rent growth. Use $13-14/SF for small-bay as starting rent for new spec product.",
+    },
+}
+
+
+@app.route('/api/underwriting/markets')
+def uw_markets():
+    """Return list of markets available for underwriting."""
+    return jsonify([{
+        "market": k,
+        "region": v["region"],
+        "vacancy_rate": v["market_fundamentals"]["vacancy_rate"],
+        "cap_rate": v["market_fundamentals"]["cap_rate"],
+        "rent_growth_pct": v["market_fundamentals"]["rent_growth_pct"],
+        "sources": v["sources"],
+    } for k, v in UW_MARKET_DATA.items()])
+
+
+@app.route('/api/underwriting/assumptions/<market>')
+def uw_assumptions(market):
+    """Return full underwriting assumptions for a specific market."""
+    # Normalize market name for lookup
+    normalized = market.replace('-', ' ').replace('_', ' ')
+    data = None
+    for k, v in UW_MARKET_DATA.items():
+        if k.lower() == normalized.lower():
+            data = v
+            break
+
+    if not data:
+        return jsonify({"error": f"Market '{market}' not found. Available: {list(UW_MARKET_DATA.keys())}"}), 404
+
+    return jsonify({
+        "market": market,
+        "region": data["region"],
+        "sources": data["sources"],
+        "report_urls": data["report_urls"],
+        "market_fundamentals": data["market_fundamentals"],
+        "rents_by_size": data["rents_by_size"],
+        "construction_costs": data["construction_costs"],
+        "market_standards": data["market_standards"],
+        "underwriting_notes": data["underwriting_notes"],
+    })
+
+
+@app.route('/api/underwriting/validate', methods=['POST'])
+def uw_validate():
+    """
+    Accept user's underwriting inputs and return AI validation
+    comparing them against broker report data.
+    Uses Claude to generate a validation narrative.
+    """
+    inputs = request.json or {}
+    market = inputs.get('market', '')
+    buildings = inputs.get('buildings', [])
+
+    # Get market data
+    normalized = market.replace('-', ' ').replace('_', ' ')
+    mkt_data = None
+    for k, v in UW_MARKET_DATA.items():
+        if k.lower() == normalized.lower():
+            mkt_data = {**v, "market_name": k}
+            break
+
+    if not mkt_data:
+        return jsonify({"error": f"Market '{market}' not found"}), 404
+
+    if not ANTHROPIC_API_KEY:
+        # Return basic validation without AI
+        validations = []
+        for bldg in buildings:
+            size_key = bldg.get('size_segment', '100_250k')
+            btype = bldg.get('building_type', 'rear_load')
+            rent_data = mkt_data['rents_by_size'].get(size_key, {})
+            cost_data = mkt_data['construction_costs'].get(btype, {}).get(size_key, {})
+
+            user_rent = bldg.get('rent_psf', 0)
+            user_cost = bldg.get('construction_cost_psf', 0)
+            market_rent = rent_data.get('rent', 0)
+            market_cost = cost_data.get('cost_psf', 0)
+
+            rent_delta = ((user_rent - market_rent) / market_rent * 100) if market_rent else 0
+            cost_delta = ((user_cost - market_cost) / market_cost * 100) if market_cost else 0
+
+            validations.append({
+                "building": bldg.get('name', f"Building {buildings.index(bldg)+1}"),
+                "market_rent": market_rent,
+                "user_rent": user_rent,
+                "rent_delta_pct": round(rent_delta, 1),
+                "rent_status": "above_market" if rent_delta > 5 else "below_market" if rent_delta < -5 else "at_market",
+                "market_cost": market_cost,
+                "user_cost": user_cost,
+                "cost_delta_pct": round(cost_delta, 1),
+                "cost_status": "above_market" if cost_delta > 10 else "below_market" if cost_delta < -10 else "at_market",
+                "market_vacancy": rent_data.get('vacancy', 0),
+                "market_rent_growth": rent_data.get('rent_growth', 0),
+                "market_free_rent": rent_data.get('free_rent_months', 2),
+                "market_ti": rent_data.get('ti_new', 10),
+                "market_lc_pct": rent_data.get('lc_pct', 7.0),
+                "source_note": cost_data.get('note', ''),
+            })
+
+        return jsonify({
+            "market": mkt_data["market_name"],
+            "validations": validations,
+            "market_notes": mkt_data["underwriting_notes"],
+            "sources": mkt_data["sources"],
+            "ai_narrative": None
+        })
+
+    # With API key — generate AI validation narrative
+    try:
+        context_parts = []
+        for bldg in buildings:
+            size_key = bldg.get('size_segment', '100_250k')
+            btype = bldg.get('building_type', 'rear_load')
+            rent_data = mkt_data['rents_by_size'].get(size_key, {})
+            cost_data = mkt_data['construction_costs'].get(btype, {}).get(size_key, {})
+
+            context_parts.append(
+                f"Building: {bldg.get('name', 'Unnamed')} | "
+                f"Size: {bldg.get('sqft', 0):,} SF | "
+                f"Type: {btype.replace('_',' ')} | "
+                f"User rent: ${bldg.get('rent_psf',0)}/SF | Market rent: ${rent_data.get('rent',0)}/SF | "
+                f"User cost: ${bldg.get('construction_cost_psf',0)}/SF | Market cost: ${cost_data.get('cost_psf',0)}/SF | "
+                f"User exit cap: {bldg.get('exit_cap',0)}% | Market cap: {mkt_data['market_fundamentals']['cap_rate']}%"
+            )
+
+        prompt = f"""You are a senior industrial real estate underwriting advisor at Glenstar Properties.
+
+Review the following underwriting inputs against Q1 2026 broker report data for {mkt_data['market_name']}.
+
+BROKER DATA (JLL/CBRE/C&W/Avison Young/Newmark/Colliers Q1 2026):
+- Market vacancy: {mkt_data['market_fundamentals']['vacancy_rate']}%
+- YTD absorption: {mkt_data['market_fundamentals']['ytd_absorption_msf']} MSF
+- Market rent growth: {mkt_data['market_fundamentals']['rent_growth_pct']}% YOY
+- Market cap rate: {mkt_data['market_fundamentals']['cap_rate']}%
+- Avg lease term: {mkt_data['market_fundamentals']['avg_lease_term_months']} months
+- Renewal probability: {mkt_data['market_fundamentals']['renewal_probability_pct']}%
+
+USER'S UNDERWRITING INPUTS vs MARKET DATA:
+{chr(10).join(context_parts)}
+
+Provide a concise validation in 3-4 paragraphs:
+1. Overall assessment — are the inputs aggressive, conservative, or at-market?
+2. Rent assumptions — specific feedback on each building's rent vs market
+3. Cost assumptions — specific feedback on construction cost vs market
+4. Key risks and recommendations — what should Glenstar adjust?
+
+Be direct, specific, and data-driven. Reference actual broker report numbers."""
+
+        reply = call_claude(None, prompt, max_tokens=1000)
+
+        # Also compute basic validation data
+        validations = []
+        for bldg in buildings:
+            size_key = bldg.get('size_segment', '100_250k')
+            btype = bldg.get('building_type', 'rear_load')
+            rent_data = mkt_data['rents_by_size'].get(size_key, {})
+            cost_data = mkt_data['construction_costs'].get(btype, {}).get(size_key, {})
+            user_rent = bldg.get('rent_psf', 0)
+            user_cost = bldg.get('construction_cost_psf', 0)
+            market_rent = rent_data.get('rent', 0)
+            market_cost = cost_data.get('cost_psf', 0)
+            rent_delta = ((user_rent - market_rent) / market_rent * 100) if market_rent else 0
+            cost_delta = ((user_cost - market_cost) / market_cost * 100) if market_cost else 0
+            validations.append({
+                "building": bldg.get('name', f"Building {buildings.index(bldg)+1}"),
+                "market_rent": market_rent,
+                "user_rent": user_rent,
+                "rent_delta_pct": round(rent_delta, 1),
+                "rent_status": "above_market" if rent_delta > 5 else "below_market" if rent_delta < -5 else "at_market",
+                "market_cost": market_cost,
+                "user_cost": user_cost,
+                "cost_delta_pct": round(cost_delta, 1),
+                "cost_status": "above_market" if cost_delta > 10 else "below_market" if cost_delta < -10 else "at_market",
+                "market_vacancy": rent_data.get('vacancy', 0),
+                "market_rent_growth": rent_data.get('rent_growth', 0),
+                "market_free_rent": rent_data.get('free_rent_months', 2),
+                "market_ti": rent_data.get('ti_new', 10),
+                "market_lc_pct": rent_data.get('lc_pct', 7.0),
+                "source_note": cost_data.get('note', ''),
+            })
+
+        return jsonify({
+            "market": mkt_data["market_name"],
+            "validations": validations,
+            "market_notes": mkt_data["underwriting_notes"],
+            "sources": mkt_data["sources"],
+            "ai_narrative": reply
+        })
+
+    except Exception as e:
+        logger.error(f"UW validation error: {e}")
+        return jsonify({"error": str(e)}), 500

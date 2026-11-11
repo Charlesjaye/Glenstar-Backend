@@ -1038,6 +1038,26 @@ RESPONSE RULES:
         return jsonify({"reply":f"An error occurred: {str(e)[:200]}. Please try again."})
 
 
+# ── Underwriting dataset (single source of truth for the Underwriting page) ──
+# Edit underwriting_markets.json to update assumptions each quarter.
+
+UW_DATASET_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'underwriting_markets.json')
+
+
+def load_underwriting_dataset():
+    with open(UW_DATASET_PATH, encoding='utf-8') as fh:
+        return json.load(fh)
+
+
+UW_DATASET = load_underwriting_dataset()
+
+
+@app.route('/api/underwriting/dataset')
+def uw_dataset():
+    """Full underwriting dataset: quarter, sources and per-market assumptions by building size."""
+    return jsonify(UW_DATASET)
+
+
 # ── Startup ────────────────────────────────────────────────────────────────────
 
 with app.app_context():

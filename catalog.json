@@ -1,0 +1,632 @@
+{
+ "markets": [
+  {
+   "name": "Dallas-Fort Worth",
+   "region": "Texas",
+   "aliases": [
+    "Dallas/Fort Worth",
+    "Dallas Fort Worth",
+    "DFW",
+    "Dallas",
+    "Dallas/Ft. Worth",
+    "Dallas-Ft. Worth",
+    "Dallas / Fort Worth",
+    "Dallas/Ft Worth"
+   ]
+  },
+  {
+   "name": "Indianapolis",
+   "region": "Midwest",
+   "aliases": [
+    "Indy",
+    "Greater Indianapolis",
+    "Central Indiana"
+   ]
+  },
+  {
+   "name": "Nashville",
+   "region": "Southeast",
+   "aliases": [
+    "Greater Nashville",
+    "Middle Tennessee"
+   ]
+  },
+  {
+   "name": "Savannah",
+   "region": "Southeast",
+   "aliases": []
+  },
+  {
+   "name": "Philadelphia",
+   "region": "Mid-Atlantic",
+   "aliases": [
+    "Greater Philadelphia",
+    "Philadelphia Metro",
+    "Southeastern Pennsylvania"
+   ]
+  },
+  {
+   "name": "Charlotte",
+   "region": "Southeast",
+   "aliases": [
+    "Charlotte Metro",
+    "Greater Charlotte"
+   ]
+  },
+  {
+   "name": "Phoenix",
+   "region": "Mountain West",
+   "aliases": [
+    "Greater Phoenix",
+    "Phoenix Metro",
+    "Metro Phoenix"
+   ]
+  },
+  {
+   "name": "Raleigh-Durham",
+   "region": "Southeast",
+   "aliases": [
+    "Raleigh/Durham",
+    "Raleigh",
+    "Raleigh Durham",
+    "Research Triangle",
+    "Triangle"
+   ]
+  },
+  {
+   "name": "Houston",
+   "region": "Texas",
+   "aliases": [
+    "Greater Houston"
+   ]
+  },
+  {
+   "name": "Louisville",
+   "region": "Midwest",
+   "aliases": []
+  },
+  {
+   "name": "Atlanta",
+   "region": "Southeast",
+   "aliases": [
+    "Metro Atlanta",
+    "Greater Atlanta"
+   ]
+  },
+  {
+   "name": "Kansas City",
+   "region": "Midwest",
+   "aliases": [
+    "Kansas City Metro"
+   ]
+  },
+  {
+   "name": "Tampa Bay",
+   "region": "Southeast",
+   "aliases": [
+    "Tampa",
+    "Tampa/St. Petersburg",
+    "Tampa-St. Petersburg",
+    "Tampa Bay Area"
+   ]
+  },
+  {
+   "name": "Memphis",
+   "region": "Southeast",
+   "aliases": []
+  },
+  {
+   "name": "Miami",
+   "region": "Southeast",
+   "aliases": [
+    "Miami-Dade",
+    "Miami/Dade",
+    "Miami-Dade County",
+    "South Florida"
+   ]
+  },
+  {
+   "name": "New Jersey",
+   "region": "Northeast",
+   "aliases": [
+    "Northern New Jersey",
+    "Central New Jersey",
+    "Northern & Central New Jersey",
+    "Northern and Central New Jersey",
+    "NJ",
+    "North/Central New Jersey"
+   ]
+  },
+  {
+   "name": "Denver",
+   "region": "Mountain West",
+   "aliases": [
+    "Metro Denver",
+    "Denver Metro"
+   ]
+  },
+  {
+   "name": "Salt Lake City",
+   "region": "Mountain West",
+   "aliases": [
+    "Salt Lake",
+    "Salt Lake County"
+   ]
+  },
+  {
+   "name": "Las Vegas",
+   "region": "Mountain West",
+   "aliases": [
+    "Southern Nevada",
+    "Las Vegas Valley"
+   ]
+  },
+  {
+   "name": "Orlando",
+   "region": "Southeast",
+   "aliases": [
+    "Greater Orlando",
+    "Central Florida"
+   ]
+  },
+  {
+   "name": "Baltimore",
+   "region": "Mid-Atlantic",
+   "aliases": [
+    "Greater Baltimore",
+    "Baltimore Metro"
+   ]
+  },
+  {
+   "name": "Cincinnati",
+   "region": "Midwest",
+   "aliases": [
+    "Greater Cincinnati",
+    "Cincinnati/Northern Kentucky"
+   ]
+  },
+  {
+   "name": "Detroit",
+   "region": "Midwest",
+   "aliases": [
+    "Metro Detroit",
+    "Southeast Michigan"
+   ]
+  },
+  {
+   "name": "Minneapolis",
+   "region": "Midwest",
+   "aliases": [
+    "Minneapolis/St. Paul",
+    "Minneapolis-St. Paul",
+    "Twin Cities",
+    "Minneapolis St. Paul"
+   ]
+  },
+  {
+   "name": "Portland",
+   "region": "Pacific Northwest",
+   "aliases": [
+    "Portland Metro",
+    "Portland, OR"
+   ]
+  },
+  {
+   "name": "Seattle",
+   "region": "Pacific Northwest",
+   "aliases": [
+    "Seattle/Puget Sound",
+    "Puget Sound",
+    "Seattle-Bellevue",
+    "Seattle/Tacoma",
+    "Seattle-Tacoma"
+   ]
+  },
+  {
+   "name": "St. Louis",
+   "region": "Midwest",
+   "aliases": [
+    "Saint Louis",
+    "St Louis"
+   ]
+  },
+  {
+   "name": "Jacksonville",
+   "region": "Southeast",
+   "aliases": []
+  },
+  {
+   "name": "Boston",
+   "region": "Northeast",
+   "aliases": [
+    "Greater Boston"
+   ]
+  },
+  {
+   "name": "San Antonio",
+   "region": "Texas",
+   "aliases": []
+  },
+  {
+   "name": "Columbus",
+   "region": "Midwest",
+   "aliases": [
+    "Columbus, OH",
+    "Central Ohio"
+   ]
+  },
+  {
+   "name": "Chicago",
+   "region": "Midwest",
+   "aliases": [
+    "Chicagoland",
+    "Greater Chicago",
+    "Chicago Metro"
+   ]
+  },
+  {
+   "name": "Inland Empire",
+   "region": "California",
+   "aliases": [
+    "Inland Empire, CA",
+    "Riverside/San Bernardino",
+    "Riverside-San Bernardino"
+   ]
+  },
+  {
+   "name": "Los Angeles",
+   "region": "California",
+   "aliases": [
+    "Greater Los Angeles",
+    "Los Angeles County",
+    "LA",
+    "Los Angeles Basin"
+   ]
+  },
+  {
+   "name": "San Francisco Bay Area",
+   "region": "California",
+   "aliases": [
+    "Bay Area",
+    "San Francisco",
+    "SF Bay Area",
+    "East Bay",
+    "Oakland/East Bay"
+   ]
+  },
+  {
+   "name": "Austin",
+   "region": "Texas",
+   "aliases": [
+    "Greater Austin"
+   ]
+  }
+ ],
+ "sources": [
+  {
+   "source": "JLL",
+   "market": "Dallas-Fort Worth",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/dallas-fort-worth-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Indianapolis",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/indianapolis-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Nashville",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/nashville-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Charlotte",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/charlotte-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Philadelphia",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/philadelphia-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Phoenix",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/phoenix-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Houston",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/houston-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Atlanta",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/atlanta-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Memphis",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/memphis-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Miami",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/miami-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "New Jersey",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/new-jersey-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Raleigh-Durham",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/raleigh-durham-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Tampa Bay",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/tampa-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Louisville",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/louisville-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Chicago",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/chicago-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Los Angeles",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/los-angeles-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Inland Empire",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/inland-empire-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Austin",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/austin-industrial"
+  },
+  {
+   "source": "CBRE",
+   "market": "Dallas-Fort Worth",
+   "url": "https://www.cbre.com/insights/reports/dallas-fort-worth-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "Indianapolis",
+   "url": "https://www.cbre.com/insights/reports/indianapolis-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "Nashville",
+   "url": "https://www.cbre.com/insights/reports/nashville-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "Philadelphia",
+   "url": "https://www.cbre.com/insights/reports/philadelphia-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "Phoenix",
+   "url": "https://www.cbre.com/insights/reports/phoenix-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "Los Angeles",
+   "url": "https://www.cbre.com/insights/reports/los-angeles-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "CBRE",
+   "market": "San Francisco Bay Area",
+   "url": "https://www.cbre.com/insights/reports/san-francisco-2026-u-s-real-estate-market-outlook"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Dallas-Fort Worth",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/dallas-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Nashville",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/nashville-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Chicago",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/chicago-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Houston",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/houston-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Indianapolis",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/indianapolis-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Savannah",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/savannah-marketbeats"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Columbus",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/columbus-marketbeats"
+  },
+  {
+   "source": "Avison Young",
+   "market": "Indianapolis",
+   "url": "https://www.avisonyoung.com/knowledge-and-research/market-reports/indianapolis-industrial"
+  },
+  {
+   "source": "Avison Young",
+   "market": "Nashville",
+   "url": "https://www.avisonyoung.com/knowledge-and-research/market-reports/nashville-industrial"
+  },
+  {
+   "source": "Avison Young",
+   "market": "Savannah",
+   "url": "https://www.avisonyoung.com/knowledge-and-research/market-reports/savannah-industrial"
+  },
+  {
+   "source": "Avison Young",
+   "market": "Charlotte",
+   "url": "https://www.avisonyoung.com/knowledge-and-research/market-reports/charlotte-industrial"
+  },
+  {
+   "source": "Newmark",
+   "market": "Dallas-Fort Worth",
+   "url": "https://www.nmrk.com/research/market-reports/dallas-industrial"
+  },
+  {
+   "source": "Newmark",
+   "market": "Philadelphia",
+   "url": "https://www.nmrk.com/research/market-reports/philadelphia-industrial"
+  },
+  {
+   "source": "Newmark",
+   "market": "Los Angeles",
+   "url": "https://www.nmrk.com/research/market-reports/los-angeles-industrial"
+  },
+  {
+   "source": "Newmark",
+   "market": "New Jersey",
+   "url": "https://www.nmrk.com/research/market-reports/new-jersey-industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Dallas-Fort Worth",
+   "url": "https://www.colliers.com/en/research/dallas/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Indianapolis",
+   "url": "https://www.colliers.com/en/research/indianapolis/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Nashville",
+   "url": "https://www.colliers.com/en/research/nashville/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Chicago",
+   "url": "https://www.colliers.com/en/research/chicago/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Columbus",
+   "url": "https://www.colliers.com/en/research/columbus/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Houston",
+   "url": "https://www.colliers.com/en/research/houston/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Atlanta",
+   "url": "https://www.colliers.com/en/research/atlanta/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Austin",
+   "url": "https://www.colliers.com/en/research/austin/industrial"
+  },
+  {
+   "source": "Colliers",
+   "market": "Los Angeles",
+   "url": "https://www.colliers.com/en/research/los-angeles/industrial"
+  },
+  {
+   "source": "Cushman & Wakefield",
+   "market": "Kansas City",
+   "url": "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/kansas-city-marketbeats"
+  },
+  {
+   "source": "JLL",
+   "market": "Denver",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/denver-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Salt Lake City",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/salt-lake-city-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Las Vegas",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/las-vegas-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Orlando",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/orlando-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Baltimore",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/baltimore-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Cincinnati",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/cincinnati-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Detroit",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/detroit-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Minneapolis",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/minneapolis-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Portland",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/portland-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Seattle",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/seattle-bellevue-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "St. Louis",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/st-louis-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Jacksonville",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/jacksonville-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "Boston",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/boston-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "San Antonio",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/san-antonio-industrial"
+  },
+  {
+   "source": "JLL",
+   "market": "San Francisco Bay Area",
+   "url": "https://www.jll.com/en-us/insights/market-dynamics/san-francisco-mid-peninsula-industrial"
+  }
+ ]
+}

@@ -3,10 +3,14 @@ services:
     name: glenstar-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    # One process with several threads: uploads are read in background threads and the
+    # twice-daily scan is scheduled in-process, so there must be exactly one process.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 180
     healthCheckPath: /api/health
     envVars:
-      - key: ANTHROPIC_API_KEY
+      - key: ANTHROPIC_API_KEY      # required: reads reports, writes the thesis, powers chat
         sync: false
-      - key: FLASK_ENV
-        value: production
+      - key: DATABASE_URL           # required for permanent storage: a Postgres connection string
+        sync: false
+      - key: ADMIN_TOKEN            # recommended: passcode required to add or change data
+        sync: false

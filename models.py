@@ -92,6 +92,7 @@ class MetricValue(db.Model):
 class ScanTarget(db.Model):
     """A broker web page the scanner checks for new reports."""
     __tablename__ = 'gs_scan_target'
+    __table_args__ = (db.UniqueConstraint('source', 'market', name='uq_scan_target_source_market'),)
     id           = db.Column(db.Integer, primary_key=True)
     source       = db.Column(db.String(60))
     market       = db.Column(db.String(120))

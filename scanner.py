@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import IntegrityError
 
 import catalog
 import extraction
@@ -57,10 +58,13 @@ RESULT_TEXT = {
 def sync_targets():
     """Make sure every catalog page has a scan target (existing rows, including edited URLs, are kept)."""
     existing = {(t.source, t.market) for t in ScanTarget.query.all()}
-    for page in catalog.SOURCE_PAGES:
-        if (page['source'], page['market']) not in existing:
-            db.session.add(ScanTarget(source=page['source'], market=page['market'], url=page['url']))
-    db.session.commit()
+    try:
+        for page in catalog.SOURCE_PAGES:
+            if (page['source'], page['market']) not in existing:
+                db.session.add(ScanTarget(source=page['source'], market=page['market'], url=page['url']))
+        db.session.commit()
+    except IntegrityError:          # another process added them at the same moment
+        db.session.rollback()
 
 
 class UnsafeURL(ValueError):
@@ -265,4 +269,4 @@ def _run(app, run_id):
         db.session.remove()
     if new_documents:
         import insights
-        insights.regenerate_async(app, reason='new reports from scan')
+        insights.maybe_regenerate(app)

@@ -6,12 +6,14 @@ import hmac
 import io
 import logging
 import os
+import threading
 from datetime import datetime
 from functools import wraps
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
+from sqlalchemy.exc import IntegrityError
 
 import catalog
 import data
@@ -127,19 +129,34 @@ def coverage():
 
 # ── Documents ────────────────────────────────────────────────────────────────
 
-def _after_processing():
-    """Runs when a background read finishes: refresh the thesis if the data changed."""
-    insights.maybe_regenerate(app)
+# Refreshing the thesis costs an AI call, so wait for a quiet period after uploads:
+# dropping in twenty PDFs should produce one new thesis, not twenty.
+THESIS_QUIET_SECONDS = int(os.environ.get('THESIS_QUIET_SECONDS', '45'))
+_thesis_timer = None
+_thesis_lock = threading.Lock()
+
+
+def _schedule_thesis_refresh():
+    global _thesis_timer
+    with _thesis_lock:
+        if _thesis_timer is not None:
+            _thesis_timer.cancel()
+        _thesis_timer = threading.Timer(THESIS_QUIET_SECONDS, _refresh_thesis)
+        _thesis_timer.daemon = True
+        _thesis_timer.start()
+
+
+def _refresh_thesis():
+    try:
+        insights.maybe_regenerate(app)
+    except Exception:
+        logger.exception('Thesis refresh failed')
 
 
 def _process(doc_id):
     def work():
         ingest._run(app, doc_id)
-        try:
-            _after_processing()
-        except Exception:
-            logger.exception('Post-processing failed')
-    import threading
+        _schedule_thesis_refresh()
     threading.Thread(target=work, name=f'ingest-{doc_id}', daemon=True).start()
 
 
@@ -489,10 +506,13 @@ def chat():
 
 def init():
     db.create_all()
-    for m in catalog.MARKETS:
-        if not Market.query.filter_by(name=m['name']).first():
-            db.session.add(Market(name=m['name'], region=m['region'], tracked=True))
-    db.session.commit()
+    try:
+        for m in catalog.MARKETS:
+            if not Market.query.filter_by(name=m['name']).first():
+                db.session.add(Market(name=m['name'], region=m['region'], tracked=True))
+        db.session.commit()
+    except IntegrityError:          # another process created them at the same moment
+        db.session.rollback()
     scanner.sync_targets()
     ingest.recover_interrupted()
 

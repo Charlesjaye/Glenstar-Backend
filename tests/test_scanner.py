@@ -48,6 +48,7 @@ def site():
 
 
 def target(path, site):
+    ScanTarget.query.filter_by(source='JLL', market='Dallas-Fort Worth').delete()
     t = ScanTarget(source='JLL', market='Dallas-Fort Worth', url=site + path)
     db.session.add(t)
     db.session.commit()
@@ -91,9 +92,7 @@ def test_page_with_no_report_changes_nothing(app, fake_ai, site):
 
 
 def test_unreachable_site_is_an_error(app, fake_ai):
-    t = ScanTarget(source='JLL', market='Dallas-Fort Worth', url='http://127.0.0.1:9/none')
-    db.session.add(t)
-    db.session.commit()
+    t = target('', 'http://127.0.0.1:9/none')
     assert scanner.check_target(t) == 'error'
 
 

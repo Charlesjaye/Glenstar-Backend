@@ -80,9 +80,13 @@ def build_snapshot():
                     entry['previous'] = {'value': pv.value, 'quarter': pv.quarter, 'doc_id': pd.id}
             metrics[key] = entry
 
-        segments = defaultdict(dict)
-        for v, d in latest['rows']:
-            if v.segment and (v.metric not in segments[v.segment] or d.id == latest['primary'].id):
+        # Size / product-type breakdowns, in the order the report lists them.
+        segments, segment_order = defaultdict(dict), {}
+        for v, d in sorted(latest['rows'], key=lambda r: r[0].id):
+            if not v.segment:
+                continue
+            segment_order.setdefault(v.segment, len(segment_order))
+            if v.metric not in segments[v.segment] or d.id == latest['primary'].id:
                 segments[v.segment][v.metric] = value_dict(v, d)
 
         history = []
@@ -106,7 +110,7 @@ def build_snapshot():
             'documents': [{'id': d.id, 'source': d.source, 'title': d.title or d.filename, 'origin': d.origin}
                           for d in latest['docs'].values()],
             'metrics': metrics,
-            'segments': [{'segment': s, 'metrics': m} for s, m in sorted(segments.items())],
+            'segments': [{'segment': s, 'metrics': segments[s]} for s in sorted(segments, key=segment_order.get)],
             'history': history,
         })
 

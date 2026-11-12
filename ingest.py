@@ -14,6 +14,7 @@ import catalog
 import extraction
 import llm
 import quarters
+import sizes
 import verification
 from models import Document, Market, MetricValue, db
 
@@ -138,10 +139,17 @@ def process_document(doc_id):
         if not market:
             continue
         period = raw.get('rent_period') if raw.get('metric') == 'asking_rent' else None
+        offset = {'prior_quarter': -1, 'prior_year': -4}.get(raw.get('period'), 0)
+        if offset and metric['key'] not in catalog.TREND_METRICS:
+            continue                               # comparison figures are kept only for trend metrics
+        segment = ' '.join((raw.get('segment') or '').split())[:120]
+        shape = sizes.classify(segment) if segment else {'kind': None, 'size_min': None, 'size_max': None}
         rows.append({
+            'period_offset': offset, 'quarter': quarters.shift(quarter, offset),
+            'segment_kind': shape['kind'], 'size_min': shape['size_min'], 'size_max': shape['size_max'],
             'market': market, 'market_printed': (raw.get('market') or '')[:160],
             'metric': metric['key'], 'unit': metric['unit'],
-            'segment': ' '.join((raw.get('segment') or '').split())[:120],
+            'segment': segment,
             'value': float(raw['value']), 'printed': (raw.get('printed') or '')[:120],
             'period': period if period in ('yr', 'mo') else None,
             'quote': raw.get('quote') or '', 'page': raw.get('page'), 'note': (raw.get('note') or '')[:300],
@@ -187,7 +195,9 @@ def process_document(doc_id):
         ensure_market(row['market'])
         db.session.add(MetricValue(
             document_id=doc.id, market=row['market'], market_printed=row['market_printed'],
-            quarter=quarter, quarter_idx=doc.quarter_idx, metric=row['metric'], segment=row['segment'],
+            quarter=row['quarter'], quarter_idx=quarters.index(row['quarter']), period_offset=row['period_offset'],
+            metric=row['metric'], segment=row['segment'], segment_kind=row['segment_kind'],
+            size_min=row['size_min'], size_max=row['size_max'],
             value=row['value'], unit=row['unit'], period=row['period'], printed=row['printed'],
             quote=row['quote'], page=row['page'], note=row['note'], status=status,
             checks_json=json.dumps(row['checks']),

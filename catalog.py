@@ -23,6 +23,7 @@ BROKERAGES = [
 #   percent        value as printed, e.g. 7.2 for 7.2%
 #   sf             square feet (a printed "1.2 MSF" is stored as 1200000)
 #   usd_psf        dollars per square foot (rent values also carry a period: yr / mo)
+#   months         a duration in months
 # `range` is a plausibility window; values outside it are held for review.
 METRICS = [
     {'key': 'vacancy_rate',         'label': 'Vacancy rate',              'unit': 'percent', 'range': (0, 40),
@@ -55,6 +56,19 @@ METRICS = [
      'definition': 'Average industrial sale price per square foot, only if the report states it.'},
     {'key': 'construction_cost_psf', 'label': 'Construction cost',        'unit': 'usd_psf', 'range': (20, 600),
      'definition': 'Industrial construction cost per square foot, only if the report states it.'},
+    # Underwriting inputs that some broker reports publish
+    {'key': 'free_rent_months',     'label': 'Free rent',                 'unit': 'months', 'range': (0, 24),
+     'definition': 'Typical free rent / rent abatement on new leases, in months, only if the report states it.'},
+    {'key': 'ti_allowance_psf',     'label': 'TI allowance',              'unit': 'usd_psf', 'range': (0, 150),
+     'definition': 'Typical tenant improvement allowance per square foot on new leases, only if the report states it.'},
+    {'key': 'lease_term_months',    'label': 'Lease term',                'unit': 'months', 'range': (6, 360),
+     'definition': 'Average lease term, in months (a term printed in years is converted: 5 years = 60), only if stated.'},
+    {'key': 'rent_escalation_pct',  'label': 'Rent escalations',          'unit': 'percent', 'range': (0, 10),
+     'definition': 'Typical annual contractual rent escalation, as a percent, only if the report states it.'},
+    {'key': 'opex_psf',             'label': 'Operating expenses',        'unit': 'usd_psf', 'range': (0, 20),
+     'definition': 'Typical operating expenses / NNN charges per square foot per year, only if the report states it.'},
+    {'key': 'taxes_psf',            'label': 'Real estate taxes',         'unit': 'usd_psf', 'range': (0, 15),
+     'definition': 'Typical real estate taxes per square foot per year, only if the report states it.'},
 ]
 METRIC_BY_KEY = {m['key']: m for m in METRICS}
 METRIC_KEYS = [m['key'] for m in METRICS]
@@ -114,3 +128,30 @@ def normalize_brokerage(name):
         if needle in s:
             return canon
     return (name or '').strip() or 'Other'
+
+
+# Metrics for which a report's prior-period comparison figures are also kept, to show direction.
+TREND_METRICS = ['vacancy_rate', 'availability_rate', 'asking_rent', 'net_absorption_qtr', 'under_construction',
+                 'deliveries_qtr', 'inventory']
+
+# The underwriting sheet. `metric` names the broker metric that can fill the field; fields
+# without one are never published by brokers and can only be a Glenstar assumption.
+UNDERWRITING_FIELDS = [
+    {'key': 'rent',         'label': 'Asking rent',         'unit': 'usd_psf_yr', 'group': 'Revenue',      'metric': 'asking_rent'},
+    {'key': 'rent_growth',  'label': 'Rent growth',         'unit': 'percent',    'group': 'Revenue',      'metric': 'rent_growth_yoy'},
+    {'key': 'vacancy',      'label': 'Vacancy',             'unit': 'percent',    'group': 'Revenue',      'metric': 'vacancy_rate'},
+    {'key': 'escalation',   'label': 'Rent escalations',    'unit': 'percent',    'group': 'Revenue',      'metric': 'rent_escalation_pct'},
+    {'key': 'cost',         'label': 'Construction cost',   'unit': 'usd_psf',    'group': 'Construction', 'metric': 'construction_cost_psf'},
+    {'key': 'free_rent',    'label': 'Free rent',           'unit': 'months',     'group': 'Leasing',      'metric': 'free_rent_months'},
+    {'key': 'ti_new',       'label': 'TI — new lease',      'unit': 'usd_psf',    'group': 'Leasing',      'metric': 'ti_allowance_psf'},
+    {'key': 'ti_renewal',   'label': 'TI — renewal',        'unit': 'usd_psf',    'group': 'Leasing',      'metric': None},
+    {'key': 'lc',           'label': 'Leasing commission',  'unit': 'percent',    'group': 'Leasing',      'metric': None},
+    {'key': 'lease_term',   'label': 'Lease term',          'unit': 'months',     'group': 'Leasing',      'metric': 'lease_term_months'},
+    {'key': 'renewal_prob', 'label': 'Renewal probability', 'unit': 'percent',    'group': 'Leasing',      'metric': None},
+    {'key': 'downtime',     'label': 'Downtime on rollover', 'unit': 'months',    'group': 'Leasing',      'metric': None},
+    {'key': 'cap',          'label': 'Exit cap rate',       'unit': 'percent',    'group': 'Exit',         'metric': 'cap_rate'},
+    {'key': 'opex',         'label': 'Operating expenses',  'unit': 'usd_psf',    'group': 'Operating',    'metric': 'opex_psf'},
+    {'key': 'taxes',        'label': 'Real estate taxes',   'unit': 'usd_psf',    'group': 'Operating',    'metric': 'taxes_psf'},
+    {'key': 'cap_reserve',  'label': 'Capital reserve',     'unit': 'usd_psf',    'group': 'Operating',    'metric': None},
+]
+UNDERWRITING_FIELD_BY_KEY = {f['key']: f for f in UNDERWRITING_FIELDS}

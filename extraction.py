@@ -8,7 +8,7 @@ import logging
 from pypdf import PdfReader
 
 import llm
-from catalog import BROKERAGES, METRICS, METRIC_KEYS
+from catalog import BROKERAGES, METRICS, METRIC_KEYS, TREND_METRICS
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ def has_text_layer(pages):
 
 
 _METRIC_LIST = '\n'.join(f'- {m["key"]}: {m["definition"]}' for m in METRICS)
+_TREND_KEYS = ', '.join(TREND_METRICS)
 
 EXTRACTION_SYSTEM = f"""You read commercial real estate brokerage research reports for an investment firm that \
 develops industrial property. Your output feeds a database where every number must be exactly what the broker \
@@ -68,9 +69,14 @@ is_industrial_report to false, explain why in rejection_reason, and return no va
 2. Identify the brokerage, the report title, and the reporting quarter. Take the quarter only from what the document \
 says (cover, header, or the period its statistics are labelled with) — never from the file name or from today's \
 date. If the document does not state a quarter, set quarter to null.
-3. Extract the statistics defined below for the report's current quarter only. Skip prior-period columns, forecasts, \
-and national/US totals. A report may cover one market or many (for example a national table with a row per market); \
-return values for every market it gives current-quarter statistics for.
+3. Extract the statistics defined below for the report's current quarter. Skip forecasts and national/US totals. \
+A report may cover one market or many (for example a national table with a row per market); return values for every \
+market it gives current-quarter statistics for.
+4. Where the report prints the same statistic for a comparison period — the prior quarter or the same quarter a year \
+earlier, typically as extra columns in the statistics table or as "up from 6.8% a year ago" — also return those, \
+with period set to "prior_quarter" or "prior_year". Do this only for: {_TREND_KEYS}. These show which direction a \
+market is moving, so they matter; but return one only when the report prints the actual prior figure, never by \
+working backwards from a stated change.
 
 Metrics (use exactly these keys):
 {_METRIC_LIST}
@@ -81,14 +87,20 @@ infer anything. If the report gives vacancy but not availability, return vacancy
 - If a figure does not clearly match one of the definitions (for example a 12-month absorption figure, or a \
 "direct" vacancy rate when a total rate is also given), leave it out.
 - market: the market name exactly as printed. For a single-market report use the report's market name for every value.
-- segment: leave empty for the market-wide total. Use it only when the report breaks a metric down by building size \
-or product type (for example "100,000-249,999 SF" or "Warehouse/Distribution"), and copy the label as printed. \
+- segment: leave empty for the market-wide total. When the report breaks a metric down by building size (for \
+example "100,000-249,999 SF", "Under 50K", "500K+") or by product type (for example "Warehouse/Distribution", \
+"Flex"), return a value for every row of that breakdown and copy the row label exactly as printed, including the \
+size numbers — the size range is read from this label. Size breakdowns are especially useful; do not skip them. \
 Do not extract submarket rows.
+- period: "current" for the report quarter; "prior_quarter" or "prior_year" only as described in step 4.
 - printed: the figure exactly as it appears, including symbols and units, for example "7.2%", "(1,234,567)", \
 "$9.85", "24.2 MSF".
 - value: the same figure as a plain number. Percentages as printed (7.2 for 7.2%). Areas in square feet \
-(24.2 MSF is 24200000; a table headed "SF (000s)" showing 1,235 is 1235000). Negative figures, including those \
-shown in parentheses, as negative numbers.
+(24.2 MSF is 24200000; a table headed "SF (000s)" showing 1,235 is 1235000). Durations in months (a lease term \
+printed as "5 years" is 60). Negative figures, including those shown in parentheses, as negative numbers.
+- Underwriting inputs (free rent, TI allowances, lease terms, escalations, operating expenses, taxes, cap rates, \
+construction costs) appear in only some reports. Return them when the report states a specific figure for the \
+market; if it gives a range ("3-4 months"), leave it out rather than choosing a number.
 - rent_period: "yr" or "mo" for asking_rent, according to how the report quotes rents; "na" for every other metric.
 - quote: a short verbatim passage copied character-for-character from the document that contains the printed \
 figure and enough context to show what it measures — the sentence, or for a table the row label and the cells up to \
@@ -117,11 +129,12 @@ EXTRACTION_SCHEMA = {
             'items': {
                 'type': 'object',
                 'additionalProperties': False,
-                'required': ['market', 'metric', 'segment', 'value', 'printed', 'rent_period', 'quote', 'page', 'note'],
+                'required': ['market', 'metric', 'segment', 'period', 'value', 'printed', 'rent_period', 'quote', 'page', 'note'],
                 'properties': {
                     'market': {'type': 'string'},
                     'metric': {'type': 'string', 'enum': METRIC_KEYS},
                     'segment': {'type': 'string'},
+                    'period': {'type': 'string', 'enum': ['current', 'prior_quarter', 'prior_year']},
                     'value': {'type': 'number'},
                     'printed': {'type': 'string'},
                     'rent_period': {'type': 'string', 'enum': ['yr', 'mo', 'na']},
@@ -205,13 +218,13 @@ def audit(data, mime, pages, quarter, values):
     for i, v in enumerate(values):
         seg = f' | segment: {v["segment"]}' if v.get('segment') else ''
         period = f' per {v["period"]}' if v.get('period') in ('yr', 'mo') else ''
-        lines.append(f'{i}. market: {v["market_printed"]}{seg} | metric: {v["metric"]} | stored value: {v["value"]:g} '
-                     f'({v["unit"]}{period}) | page: {v["page"]}')
+        lines.append(f'{i}. market: {v["market_printed"]}{seg} | metric: {v["metric"]} | quarter: {v["quarter"]} | '
+                     f'stored value: {v["value"]:g} ({v["unit"]}{period}) | page: {v["page"]}')
     result = llm.complete(
         system=AUDIT_SYSTEM,
         messages=[{'role': 'user', 'content': [
             _document_block(data, mime, pages),
-            {'type': 'text', 'text': f'Reporting quarter: {quarter}\n\nTranscribed values to check:\n' + '\n'.join(lines)},
+            {'type': 'text', 'text': f'Report quarter: {quarter}\n\nTranscribed values to check:\n' + '\n'.join(lines)},
         ]}],
         schema=AUDIT_SCHEMA,
         effort='high',

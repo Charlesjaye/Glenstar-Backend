@@ -18,12 +18,15 @@ from sqlalchemy.exc import IntegrityError
 import catalog
 import data
 import extraction
+import finder
 import ingest
 import insights
 import llm
 import quarters
 import scanner
-from models import PUBLISHED, Document, Market, MetricValue, ScanRun, ScanTarget, Thesis, db
+import sizes
+from models import (PUBLISHED, Assumption, Document, FinderRun, Market, MetricValue, ScanRun, ScanTarget, Thesis, db,
+                    ensure_columns)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -94,6 +97,8 @@ def stats():
         'api_key_configured': llm.api_key_configured(),
         'admin_required': bool(ADMIN_TOKEN),
         'storage_persistent': not uri.startswith('sqlite'),
+        'inbound_enabled': bool(ADMIN_TOKEN),
+        'finder': finder.job_status(),
         'market_count': len(snapshot['markets']),
         'current_market_count': sum(1 for m in snapshot['markets'] if m['is_current']),
         'tracked_market_count': cov['counts']['total'],
@@ -444,6 +449,125 @@ def update_target(target_id):
     return jsonify({'ok': True})
 
 
+# ── Underwriting sheet ───────────────────────────────────────────────────────
+
+@app.route('/api/underwriting')
+def underwriting_index():
+    return jsonify({'markets': data.underwriting_markets(),
+                    'bands': [{k: b[k] for k in ('key', 'label', 'short', 'note')} for b in sizes.STANDARD_BANDS],
+                    'fields': catalog.UNDERWRITING_FIELDS})
+
+
+@app.route('/api/underwriting/<path:market>')
+def underwriting_sheet(market):
+    return jsonify(data.underwriting_sheet(market))
+
+
+@app.route('/api/underwriting/<path:market>/assumptions', methods=['PUT'])
+@admin
+def save_assumption(market):
+    """Save (or clear) one of the user's own underwriting assumptions."""
+    body = request.json or {}
+    band, field = body.get('band'), body.get('field')
+    if band not in sizes.BAND_BY_KEY or field not in catalog.UNDERWRITING_FIELD_BY_KEY:
+        return error('Unknown size band or field.')
+    bands = list(sizes.BAND_BY_KEY) if body.get('all_bands') else [band]
+    raw = body.get('value')
+    if raw in (None, ''):
+        Assumption.query.filter(Assumption.market == market, Assumption.field == field,
+                                Assumption.band.in_(bands)).delete(synchronize_session=False)
+    else:
+        try:
+            value = float(str(raw).replace(',', '').replace('$', '').replace('%', ''))
+        except ValueError:
+            return error('Enter a number.')
+        for b in bands:
+            row = Assumption.query.filter_by(market=market, band=b, field=field).first() or \
+                Assumption(market=market, band=b, field=field)
+            row.value, row.note, row.updated_at = value, (body.get('note') or '')[:300], datetime.utcnow()
+            db.session.add(row)
+    db.session.commit()
+    return jsonify(data.underwriting_sheet(market))
+
+
+# ── Report finder (web search) ───────────────────────────────────────────────
+
+@app.route('/api/finder', methods=['POST'])
+@admin
+def finder_start():
+    body = request.json or {}
+    try:
+        started, count = finder.start(app, markets=body.get('markets'), include_recent=True)
+    except llm.LLMError as exc:
+        return error(str(exc), 503)
+    return jsonify({'started': started, 'markets': count, 'job': finder.job_status()})
+
+
+@app.route('/api/finder/status')
+def finder_status():
+    runs = FinderRun.query.order_by(FinderRun.started_at.desc()).limit(80).all()
+    import json as _json
+    return jsonify({'job': finder.job_status(), 'runs': [{
+        'id': r.id, 'market': r.market, 'quarter': r.quarter, 'status': r.status, 'detail': r.detail,
+        'links': _json.loads(r.links_json or '[]'), 'new_documents': r.new_documents,
+        'at': iso(r.finished_at or r.started_at)} for r in runs]})
+
+
+# ── Inbound hook (email forwarding / automations) ────────────────────────────
+
+_PDF_LINK = __import__('re').compile(r'https?://[^\s"\'<>)]+', __import__('re').I)
+
+
+@app.route('/api/inbound', methods=['POST'])
+def inbound():
+    """Accepts reports pushed by an automation (for example "when a broker research email
+    arrives, send its attachments and links here"). PDF attachments are filed directly; links
+    in the message are followed and filed if they are PDFs. Requires the admin passcode, sent
+    as the X-Admin-Token header or a ?token= parameter."""
+    supplied = request.headers.get('X-Admin-Token') or request.args.get('token') or ''
+    if not ADMIN_TOKEN:
+        return error('Set ADMIN_TOKEN on the backend to enable the inbound hook.', 403)
+    if not hmac.compare_digest(supplied.encode(), ADMIN_TOKEN.encode()):
+        return error('Wrong or missing token.', 401)
+
+    added, skipped = [], []
+    for f in list(request.files.values()):
+        blob = f.read()
+        if blob[:5] != b'%PDF-' or len(blob) > extraction.MAX_PDF_BYTES:
+            skipped.append(f.filename or 'attachment')
+            continue
+        try:
+            doc, created = ingest.create_document(blob, f.filename or 'report.pdf', origin='email')
+        except extraction.DocumentError:
+            skipped.append(f.filename or 'attachment')
+            continue
+        if created:
+            _process(doc.id)
+        added.append(doc.id)
+
+    body = request.get_json(silent=True) or {}
+    text = ' '.join(str(v) for v in list(body.values()) + list(request.form.values()))
+    links = list(dict.fromkeys(u.rstrip('.,;') for u in _PDF_LINK.findall(text)))[:15]
+    for url in links:
+        if Document.query.filter_by(report_url=url).first():
+            continue
+        try:
+            resp = scanner.fetch(url)
+        except Exception:
+            continue
+        if resp.status_code != 200 or resp.content[:5] != b'%PDF-' or len(resp.content) > extraction.MAX_PDF_BYTES:
+            continue
+        try:
+            doc, created = ingest.create_document(resp.content, resp.url.rsplit('/', 1)[-1].split('?')[0] or 'report.pdf',
+                                                  origin='email', report_url=resp.url)
+        except extraction.DocumentError:
+            continue
+        if created:
+            _process(doc.id)
+        added.append(doc.id)
+    return jsonify({'ok': True, 'documents': added, 'skipped': skipped})
+
+
 # ── Thesis & chat ────────────────────────────────────────────────────────────
 
 def _thesis_dict(t):
@@ -506,6 +630,7 @@ def chat():
 
 def init():
     db.create_all()
+    ensure_columns()
     try:
         for m in catalog.MARKETS:
             if not Market.query.filter_by(name=m['name']).first():
@@ -527,7 +652,16 @@ if os.environ.get('GLENSTAR_DISABLE_SCHEDULER') != '1':
         with app.app_context():
             scanner.start_run(app, trigger='schedule')
 
+    def scheduled_search():
+        """An hour after each scan, search the web for reports the scan could not get."""
+        with app.app_context():
+            try:
+                finder.start(app, limit=finder.SCHEDULED_LIMIT)
+            except llm.LLMError:
+                pass
+
     scheduler.add_job(scheduled_scan, 'cron', hour='6,18', minute=0, id='twice_daily_scan')
+    scheduler.add_job(scheduled_search, 'cron', hour='7,19', minute=0, id='twice_daily_search')
     scheduler.start()
 
 if __name__ == '__main__':

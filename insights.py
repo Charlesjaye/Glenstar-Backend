@@ -27,9 +27,22 @@ def fmt_value(metric, v):
         return f'{value:g}%'
     if unit == 'sf':
         return f'{value:,.0f} SF'
+    if unit == 'months':
+        return f'{value:g} months'
     if metric == 'asking_rent':
         return f'${value:,.2f}/SF/{v.get("period") or "yr"}'
     return f'${value:,.2f}/SF'
+
+
+def _fmt_signal(sig):
+    value, unit = sig['value'], sig['unit']
+    if unit == 'bps':
+        return f'{value:+d} bps'
+    if unit == 'percent':
+        return f'{value:+g}%' if sig['key'] != 'pipeline_share' else f'{value:g}%'
+    if unit == 'sf':
+        return f'{value:+,.0f} SF'
+    return f'{value:g}'
 
 
 def market_line(m, with_segments=False):
@@ -47,6 +60,30 @@ def market_line(m, with_segments=False):
     return line
 
 
+def market_block(m, with_segments=False):
+    """A market's reported figures plus the direction-of-travel indicators calculated from them."""
+    lines = [market_line(m, with_segments)]
+    earlier = []
+    for key in catalog.TREND_METRICS:
+        v = m['metrics'].get(key)
+        if not v:
+            continue
+        label = catalog.METRIC_BY_KEY[key]['label']
+        for span in ('previous', 'year_ago'):
+            if v.get(span):
+                prior = {**v, 'value': v[span]['value']}
+                earlier.append(f'{label} in {v[span]["quarter"]}: {fmt_value(key, prior)}')
+    if earlier:
+        lines.append('    Earlier figures (same broker): ' + '; '.join(earlier))
+    signals = m.get('trend', {}).get('signals') or []
+    if signals:
+        lines.append('    Calculated indicators: ' + '; '.join(f'{s["label"]}: {_fmt_signal(s)}' for s in signals))
+    direction = m.get('trend', {}).get('direction', 'unknown')
+    lines.append(f'    Calculated direction of travel: {direction}'
+                 + ('' if m.get('trend', {}).get('has_history') else ' (no earlier-period figures on file yet)'))
+    return '\n'.join(lines)
+
+
 def thesis_inputs(snapshot=None):
     """The quarter the thesis covers and the markets that have data for it.
     The thesis uses the newest quarter that at least MIN_MARKETS markets report."""
@@ -60,39 +97,66 @@ def thesis_inputs(snapshot=None):
         return None, [], ''
     quarter = max(eligible, key=quarters.index)
     markets = by_quarter[quarter]
-    lines = [market_line(m) for m in markets]
+    lines = [market_block(m) for m in markets]
     fingerprint = hashlib.sha256('\n'.join(lines).encode()).hexdigest()
     return quarter, markets, fingerprint
 
 
 THESIS_SYSTEM = """You are a senior industrial real estate investment analyst at Glenstar Properties, a developer \
-of industrial buildings. You write the firm's quarterly market thesis for the investment committee.
+of industrial buildings. You write the firm's market thesis for the investment committee.
 
-You are given a table of statistics transcribed from brokerage research reports. Each figure is tagged with the \
-brokerage it came from. This table is the only factual source you may use.
+The committee's question is not "which market is best today" but "where is the puck going": which markets will be \
+the strongest places to own and deliver industrial product two to three years from now. A building Glenstar starts \
+today delivers and leases into that future market, not today's. So the markets that matter most are the ones whose \
+fundamentals are moving in the right direction and that have room left to run — the next big market — rather than \
+markets that are already tight, expensive and fully priced. A market with unimpressive figures today but clearly \
+improving ones deserves more attention than a strong market that has started to slip.
+
+You are given, for each market: statistics transcribed from brokerage research reports (each tagged with its \
+brokerage); earlier-period figures from the same broker where a report printed them; and indicators the platform \
+calculated from those figures (changes in vacancy, rent and pipeline, pipeline as a share of inventory, absorption \
+against deliveries). This is the only factual source you may use.
+
+How to read direction of travel:
+- Vacancy falling, absorption positive and ahead of deliveries, and a shrinking pipeline point to a market \
+tightening over the next two to three years. The reverse points to softening.
+- A large pipeline relative to inventory is supply that will hit the market inside the horizon; weigh it against \
+the pace of absorption.
+- Rent level matters as room to run: a market with lower rents and improving fundamentals has more upside than one \
+already at premium rents.
+- Where no earlier-period figures are on file for a market, you cannot see its direction. Say so, score it \
+conservatively, and set confidence to low. Do not infer a trend from a single quarter's level.
 
 Accuracy rules — the committee checks every number against the source reports:
-- Every statistic you write must appear in the table, for that market, written the same way (you may shorten \
-square feet to millions, for example 3,200,000 SF as 3.2 MSF, and round to one decimal place).
-- Do not introduce any figure from memory or general knowledge: no national averages, interest rates, tariff rates, \
-construction costs, forecasts, or historical values that are not in the table.
-- Do not calculate new figures (differences, ratios, totals, averages, spreads). Compare markets in words instead \
-("the lowest vacancy in the set", "roughly double").
-- If a market lacks a metric, say it is not reported rather than estimating it.
-- Different brokerages define markets and methodology differently. When comparing markets sourced from different \
-brokerages, keep the comparison directional.
+- Every statistic you write must appear in the data for that market, written the same way (you may shorten square \
+feet to millions, for example 3,200,000 SF as 3.2 MSF, and round to one decimal place).
+- Do not introduce any figure from memory or general knowledge: no national averages, interest rates, tariffs, \
+population or job growth numbers, construction costs or forecasts that are not in the data.
+- Do not calculate new figures. The calculated indicators are already provided; use those, and otherwise compare \
+in words.
+- You may draw on general, widely known structural context in words only (for example that a market is a port, an \
+inland hub or a reshoring destination) when it helps explain why a trend may persist — but mark it as context, not \
+data, and never attach a number to it.
+- This is a judgement about the future made from current data. Write it as a reasoned view with its conditions, \
+not as a prediction of specific future values. Do not state future vacancy rates, rents or dates as facts.
+- Different brokerages define markets differently; keep cross-broker comparisons directional.
 
 What to produce:
-- summary: four or five paragraphs of analysis for a development-focused investor: where fundamentals are strongest \
-and weakest, what the supply pipeline implies, and what Glenstar should do about it. Separate paragraphs with a \
-blank line. Plain prose, no headings or bullet points.
-- rankings: every market in the table, each with a 0-100 score reflecting development attractiveness on the \
-reported data (tight vacancy, positive absorption, manageable pipeline, rent level and growth), a tier, a one-sentence \
-headline, two or three sentences of detail, and three to five scored factors. Markets with thin data should score \
-conservatively and say so. Scores are your judgement; make clear in the wording that they are derived from the \
-reported figures.
-- risks: three to six risks that follow from the data in the table (for example markets where the pipeline is large \
-relative to absorption, or where vacancy is elevated). Do not cite outside events or statistics."""
+- summary: four or five paragraphs. Lead with where the puck is going: the markets positioned to be the next \
+leaders and why the data says so. Then the established markets and whether they still have room to run, the \
+markets that are slipping, and what Glenstar should do now — where to pursue land and starts for delivery in two \
+to three years, and where to wait. Plain prose, blank line between paragraphs, no headings or bullets.
+- rankings: every market, ordered by how attractive it should be two to three years out. For each: \
+score (0-100, the forward-looking trajectory score, not a rating of today), \
+outlook ("Emerging" = improving with room to run, the next-big-market candidates; "Established" = strong today \
+and holding; "Watch" = mixed or not enough history to call; "Deteriorating" = moving the wrong way), \
+direction (improving / stable / weakening / unclear), \
+confidence (high / medium / low, reflecting how much trend evidence is on file), \
+a one-sentence headline, a two-to-three-sentence thesis for the two-to-three-year view, \
+three to five scored signals each tied to a figure or indicator in the data, \
+and watch: the one or two data points that would change your view if they moved.
+- risks: three to six risks to the forward view that follow from the data (for example supply still to deliver, \
+absorption that has turned negative, or thin trend history)."""
 
 
 def _thesis_schema(market_names):
@@ -103,19 +167,23 @@ def _thesis_schema(market_names):
             'summary': {'type': 'string'},
             'rankings': {'type': 'array', 'items': {
                 'type': 'object', 'additionalProperties': False,
-                'required': ['market', 'score', 'tier', 'headline', 'detail', 'factors'],
+                'required': ['market', 'score', 'outlook', 'direction', 'confidence', 'headline', 'thesis',
+                             'signals', 'watch'],
                 'properties': {
                     'market': {'type': 'string', 'enum': market_names},
                     'score': {'type': 'integer'},
-                    'tier': {'type': 'string', 'enum': ['Primary', 'Secondary', 'Caution', 'Avoid']},
+                    'outlook': {'type': 'string', 'enum': ['Emerging', 'Established', 'Watch', 'Deteriorating']},
+                    'direction': {'type': 'string', 'enum': ['improving', 'stable', 'weakening', 'unclear']},
+                    'confidence': {'type': 'string', 'enum': ['high', 'medium', 'low']},
                     'headline': {'type': 'string'},
-                    'detail': {'type': 'string'},
-                    'factors': {'type': 'array', 'items': {
+                    'thesis': {'type': 'string'},
+                    'signals': {'type': 'array', 'items': {
                         'type': 'object', 'additionalProperties': False,
                         'required': ['name', 'score', 'note'],
                         'properties': {'name': {'type': 'string'}, 'score': {'type': 'integer'},
                                        'note': {'type': 'string'}},
                     }},
+                    'watch': {'type': 'string'},
                 },
             }},
             'risks': {'type': 'array', 'items': {
@@ -148,6 +216,16 @@ def allowed_numbers(markets):
                 add(value / 1e3)
             if v.get('annualized') is not None:
                 add(v['annualized'])
+            for span in ('previous', 'year_ago'):
+                if v.get(span):
+                    add(v[span]['value'])
+                    if v['unit'] == 'sf':
+                        add(v[span]['value'] / 1e6)
+        for sig in (m.get('trend') or {}).get('signals', []):
+            add(sig['value'])
+            if sig['unit'] == 'sf':
+                add(sig['value'] / 1e6)
+                add(sig['value'] / 1e3)
     return allowed
 
 
@@ -190,9 +268,10 @@ def generate_thesis():
     if not markets:
         return None
     names = [m['market'] for m in markets]
-    table = '\n'.join(market_line(m) for m in markets)
-    user = (f'Reporting quarter: {quarter}\nMarkets with reported data: {len(markets)}\n\n'
-            f'Statistics (the only figures you may use):\n{table}')
+    table = '\n\n'.join(market_block(m) for m in markets)
+    horizon = f'{int(quarter[3:]) + 2}–{int(quarter[3:]) + 3}'
+    user = (f'Latest reported quarter: {quarter}\nHorizon the committee cares about: {horizon}\n'
+            f'Markets with reported data: {len(markets)}\n\nData (the only figures you may use):\n\n{table}')
 
     result, warnings = None, []
     messages = [{'role': 'user', 'content': user}]
@@ -201,8 +280,8 @@ def generate_thesis():
                               effort='high', max_tokens=32000)
         scores = [r.get('score', 0) for r in result.get('rankings', [])]
         text = '\n'.join([result.get('summary', '')]
-                         + [f'{r.get("headline", "")} {r.get("detail", "")} '
-                            + ' '.join(f.get('note', '') for f in r.get('factors', []))
+                         + [f'{r.get("headline", "")} {r.get("thesis", "")} {r.get("watch", "")} '
+                            + ' '.join(f.get('note', '') for f in r.get('signals', []))
                             for r in result.get('rankings', [])]
                          + [f'{r.get("title", "")} {r.get("detail", "")}' for r in result.get('risks', [])])
         warnings = unverified_figures(text, markets, extra_allowed=scores)
@@ -226,10 +305,12 @@ def generate_thesis():
             continue
         rankings.append({
             'rank': len(rankings) + 1, 'market': r['market'], 'region': m['region'], 'quarter': m['quarter'],
-            'source': m['primary_source'], 'score': max(0, min(100, int(r.get('score', 0)))), 'tier': r.get('tier'),
-            'headline': r.get('headline', ''), 'detail': r.get('detail', ''),
-            'factors': [{'name': f.get('name', ''), 'score': max(1, min(5, int(f.get('score', 3)))),
-                         'note': f.get('note', '')} for f in r.get('factors', [])],
+            'source': m['primary_source'], 'score': max(0, min(100, int(r.get('score', 0)))),
+            'outlook': r.get('outlook'), 'direction': r.get('direction'), 'confidence': r.get('confidence'),
+            'headline': r.get('headline', ''), 'thesis': r.get('thesis', ''), 'watch': r.get('watch', ''),
+            'signals': [{'name': f.get('name', ''), 'score': max(1, min(5, int(f.get('score', 3)))),
+                         'note': f.get('note', '')} for f in r.get('signals', [])],
+            'calculated_direction': m['trend']['direction'],
         })
 
     Thesis.query.update({'is_current': False})
@@ -318,6 +399,9 @@ relevant broker report. Never fill a gap from memory or general knowledge, and n
 source figures when you do.
 - Markets sourced from different brokerages are not measured identically; say so when a comparison depends on it.
 - Some markets may have older data than others; mention the quarter when it differs from the latest one.
+- The team thinks two to three years ahead: when asked which markets are attractive, weigh direction of travel \
+(the earlier-period figures and calculated indicators in the database) as well as today's levels, and say when a \
+market has no trend history on file. Give views about the future as reasoned judgement, not as forecast numbers.
 - Be direct and concise. Give a recommendation when asked for one, grounded in the reported figures. Industrial \
 property only."""
 
@@ -325,7 +409,7 @@ property only."""
 def chat(message, history):
     snapshot = data.build_snapshot()
     if snapshot['markets']:
-        table = '\n'.join(market_line(m, with_segments=True) for m in snapshot['markets'])
+        table = '\n\n'.join(market_block(m, with_segments=True) for m in snapshot['markets'])
     else:
         table = '(The database is empty — no broker reports have been added yet.)'
     thesis = Thesis.query.filter_by(is_current=True).first()

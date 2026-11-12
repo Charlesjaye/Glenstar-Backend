@@ -168,3 +168,16 @@ def test_new_columns_are_added_to_an_existing_database(app):
     assert 'period_offset' not in {c['name'] for c in inspect(db.engine).get_columns('gs_value')}
     models.ensure_columns()
     assert 'period_offset' in {c['name'] for c in inspect(db.engine).get_columns('gs_value')}
+
+
+def test_levels_alone_never_claim_a_direction(app, fake_ai):
+    # Positive absorption, published rent growth and a small pipeline — but no earlier-period figures.
+    fake_ai['extraction'] = {**dfw_extraction(), 'values': [
+        val('vacancy_rate', 7.2, '7.2%', 'Total vacancy rate ended the quarter at 7.2%'),
+        val('net_absorption_qtr', 6412300, '6,412,300 SF', 'Net absorption totaled 6,412,300 SF'),
+        val('under_construction', 24150000, '24,150,000 SF', 'Under construction: 24,150,000 SF'),
+        val('inventory', 1023456789, '1,023,456,789 SF', 'Total inventory: 1,023,456,789 SF')]}
+    doc, _ = ingest.create_document(make_pdf(PAGES), 'dfw.pdf')
+    ingest.process_document(doc.id)
+    trend = data.build_snapshot()['markets'][0]['trend']
+    assert trend['direction'] == 'unknown' and len(trend['signals']) >= 2

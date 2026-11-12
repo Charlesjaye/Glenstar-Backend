@@ -176,8 +176,11 @@ def _trend(metrics, comparisons):
         add('rent_growth', 'Rent growth (as published)', rg['value'], 'percent', None if rg['value'] == 0 else rg['value'] > 0,
             f'{rg["value"]:g}% year over year ({rg["doc"]["source"]})', [rg['id']])
 
+    # A direction is only called when earlier-period figures back it: a single quarter's levels
+    # (positive absorption, a small pipeline) say where a market is, not where it is heading.
+    has_history = any(i['key'].startswith(('vacancy_change', 'rent_change', 'pipeline_change')) for i in items)
     scored = [i for i in items if i['tone']]
-    if len(scored) < 2:
+    if not has_history or len(scored) < 2:
         direction = 'unknown'
     elif score >= 2:
         direction = 'improving'
@@ -185,8 +188,7 @@ def _trend(metrics, comparisons):
         direction = 'weakening'
     else:
         direction = 'mixed'
-    return {'direction': direction, 'score': score, 'signals': items,
-            'has_history': any(i['key'].startswith(('vacancy_change', 'rent_change', 'pipeline_change')) for i in items)}
+    return {'direction': direction, 'score': score, 'signals': items, 'has_history': has_history}
 
 
 def build_snapshot():
@@ -405,8 +407,10 @@ def coverage():
     from models import FinderRun
     finder = {}
     for run in FinderRun.query.filter_by(quarter=expected).order_by(FinderRun.started_at).all():
+        links = [l for l in json.loads(run.links_json or '[]') if not l.get('document_id')]
         finder[run.market] = {'status': run.status, 'detail': run.detail,
-                              'at': (run.finished_at or run.started_at).isoformat() + 'Z'}
+                              'at': (run.finished_at or run.started_at).isoformat() + 'Z',
+                              'links': [{'url': l['url'], 'result': l.get('result', '')} for l in links[:3]]}
 
     names = {m.name: m for m in Market.query.filter_by(tracked=True).all()}
     out = []

@@ -72,6 +72,11 @@ class MetricValue(db.Model):
     quarter_idx   = db.Column(db.Integer, index=True)
     metric        = db.Column(db.String(40), index=True)
     segment       = db.Column(db.String(120), default='')          # '' = market total; else size band / product type as printed
+    segment_kind  = db.Column(db.String(10))                       # size | type | other (None for market totals)
+    size_min      = db.Column(db.Float)                            # size band in SF, read from the label
+    size_max      = db.Column(db.Float)                            # None = open-ended ("500K+")
+    period_offset = db.Column(db.Integer, default=0)               # 0 = report quarter; -1 / -4 = prior quarter / year
+                                                                   # figures the report prints for comparison
     value         = db.Column(db.Float)
     unit          = db.Column(db.String(20))                       # percent | sf | usd_psf
     period        = db.Column(db.String(4))                        # yr | mo (rents only)
@@ -133,6 +138,33 @@ class Thesis(db.Model):
     is_current    = db.Column(db.Boolean, default=True)
 
 
+class Assumption(db.Model):
+    """An underwriting input entered by a person (not broker data), per market and size band."""
+    __tablename__ = 'gs_assumption'
+    __table_args__ = (db.UniqueConstraint('market', 'band', 'field', name='uq_assumption'),)
+    id         = db.Column(db.Integer, primary_key=True)
+    market     = db.Column(db.String(120), index=True)
+    band       = db.Column(db.String(4))            # standard size band key (b1..b6)
+    field      = db.Column(db.String(40))
+    value      = db.Column(db.Float)
+    note       = db.Column(db.String(300))
+    updated_at = db.Column(db.DateTime, default=utcnow)
+
+
+class FinderRun(db.Model):
+    """One web search for a market's latest report."""
+    __tablename__ = 'gs_finder_run'
+    id          = db.Column(db.Integer, primary_key=True)
+    market      = db.Column(db.String(120), index=True)
+    quarter     = db.Column(db.String(10))
+    started_at  = db.Column(db.DateTime, default=utcnow)
+    finished_at = db.Column(db.DateTime)
+    status      = db.Column(db.String(20), default='running')   # running | found | nothing | failed
+    detail      = db.Column(db.String(600))
+    links_json  = db.Column(db.Text)                             # [{url, result}]
+    new_documents = db.Column(db.Integer, default=0)
+
+
 class Job(db.Model):
     """Tiny status record for background work the UI polls (thesis generation)."""
     __tablename__ = 'gs_job'
@@ -140,3 +172,27 @@ class Job(db.Model):
     status     = db.Column(db.String(20), default='idle')   # idle | running | failed
     detail     = db.Column(db.Text)
     updated_at = db.Column(db.DateTime, default=utcnow)
+
+
+# Columns added after the first release. create_all() does not alter existing
+# tables, so they are added here on startup when missing.
+_ADDED_COLUMNS = {
+    'gs_value': [('segment_kind', 'VARCHAR(10)'), ('size_min', 'FLOAT'), ('size_max', 'FLOAT'),
+                 ('period_offset', 'INTEGER DEFAULT 0')],
+}
+
+
+def ensure_columns():
+    from sqlalchemy import inspect, text
+    inspector = inspect(db.engine)
+    for table, columns in _ADDED_COLUMNS.items():
+        if not inspector.has_table(table):
+            continue
+        have = {c['name'] for c in inspector.get_columns(table)}
+        for name, ddl in columns:
+            if name not in have:
+                try:
+                    db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+                    db.session.commit()
+                except Exception:            # another process added it first
+                    db.session.rollback()

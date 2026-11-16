@@ -95,3 +95,40 @@ def complete(*, messages, system=None, schema=None, effort='medium', max_tokens=
         return json.loads(text)
     except ValueError as exc:
         raise LLMError('Claude returned a response that was not valid JSON.') from exc
+
+
+SEARCH_TOOL = 'web_search_20260209'
+
+
+def search(prompt, *, system=None, max_uses=6, effort='medium', max_tokens=8000):
+    """Ask Claude a question it answers by searching the web (Anthropic's hosted web search tool).
+    Returns (answer_text, results) where results is a list of {'url', 'title'} seen in the searches."""
+    if not api_key_configured():
+        raise LLMError('ANTHROPIC_API_KEY is not configured on the backend.')
+    messages = [{'role': 'user', 'content': prompt}]
+    kwargs = dict(model=MODEL, max_tokens=max_tokens, output_config={'effort': effort},
+                  tools=[{'type': SEARCH_TOOL, 'name': 'web_search', 'max_uses': max_uses}])
+    if system:
+        kwargs['system'] = system
+
+    text, results = [], []
+    try:
+        for _ in range(4):                      # a long search can pause and be resumed
+            with client().messages.stream(messages=messages, **kwargs) as stream:
+                message = stream.get_final_message()
+            for block in message.content:
+                if block.type == 'text':
+                    text.append(block.text)
+                elif block.type == 'web_search_tool_result' and isinstance(block.content, list):
+                    for item in block.content:
+                        url = getattr(item, 'url', None)
+                        if url:
+                            results.append({'url': url, 'title': getattr(item, 'title', '') or ''})
+            if message.stop_reason != 'pause_turn':
+                break
+            messages = [messages[0], {'role': 'assistant', 'content': message.content}]
+    except anthropic.APIError as exc:
+        raise LLMError(_friendly(exc)) from exc
+    if message.stop_reason == 'refusal':
+        raise LLMError('Claude declined to run this search.')
+    return ''.join(text), results

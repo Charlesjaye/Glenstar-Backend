@@ -94,7 +94,8 @@ def parse_printed(printed):
         scale = 1e3
     elif re.match(r'(bps|bp\b|basis)', a):
         scale = 0.01
-    return {'number': number, 'token': token, 'negative': negative, 'scale': scale}
+    years = bool(re.match(r'(-?\s*)?(years?|yrs?)\b', a))
+    return {'number': number, 'token': token, 'negative': negative, 'scale': scale, 'years': years}
 
 
 def _close(a, b):
@@ -108,6 +109,8 @@ def value_matches_printed(unit, value, parsed):
         candidates = [n * parsed['scale']] if parsed['scale'] in (1e3, 1e6, 1e9) else [n, n * 1e3, n * 1e6]
     elif unit == 'percent':
         candidates = [n * 0.01] if parsed['scale'] == 0.01 else [n]
+    elif unit == 'months':
+        candidates = [n * 12] if parsed.get('years') else [n]
     else:
         candidates = [n]
     return any(_close(abs(value), c) for c in candidates)
@@ -192,14 +195,15 @@ def cross_check(values):
     market, metric, segment, value and a `checks` list; failures are appended."""
     by_key = {}
     for v in values:
-        by_key.setdefault((v['market'], v['metric'], v.get('segment') or ''), []).append(v)
-    for (market, metric, segment), group in by_key.items():
+        by_key.setdefault((v['market'], v['metric'], v.get('segment') or '', v.get('period_offset') or 0), []).append(v)
+    for _key, group in by_key.items():
         distinct = {round(g['value'], 6) for g in group if g.get('value') is not None}
         if len(distinct) > 1:
             for g in group:
                 g['checks'].append({'check': 'consistent within report', 'ok': False,
                                     'detail': 'The report was read as giving more than one value for this metric.'})
-    totals = {(v['market'], v['metric']): v for v in values if not (v.get('segment') or '')}
+    totals = {(v['market'], v['metric']): v for v in values
+              if not (v.get('segment') or '') and not (v.get('period_offset') or 0)}
     for (market, metric), vac in list(totals.items()):
         if metric != 'vacancy_rate':
             continue
